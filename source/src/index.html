@@ -17,16 +17,9 @@
 </head>
 <body>
 
-<div id="stage">
-  <canvas id="gl"></canvas>
-  <div id="labels"></div>
-</div>
+<div id="stage"><canvas id="gl"></canvas></div>
 
-<div id="legend" class="glass cut">
-  <div class="k"><i style="border-color:rgba(140,237,219,.85)"></i><span id="lgCoast">海岸线</span></div>
-  <div class="k"><i style="border-color:rgba(140,237,219,.42)"></i><span id="lgBorder">国界</span></div>
-  <div class="k"><i style="border-color:rgba(242,181,82,.9);border-top-style:dashed"></i><span id="lgDash">南海断续线（示意）</span></div>
-</div>
+<div id="legend" class="glass cut"></div>
 
 <header id="hdr">
   <div class="brand">
@@ -40,23 +33,39 @@
   </div>
   <div id="searchWrap">
     <span class="sicon"></span>
-    <input id="searchBox" type="search" autocomplete="off" spellcheck="false" placeholder="搜索国家 / 地区…">
+    <input id="searchBox" type="search" autocomplete="off" spellcheck="false" placeholder="搜索国家 / 拼音 / 代码…">
     <div id="sres" class="glass hide"></div>
   </div>
   <div class="hdr-sp"></div>
   <button class="hbtn hide" id="hbInstall">⬇</button>
-  <button class="hbtn on" id="hbGlobe" title="地球仪"></button>
-  <button class="hbtn" id="hbMap" title="平面图"></button>
+  <button class="hbtn on" id="hbGlobe"></button>
+  <button class="hbtn" id="hbMap"></button>
   <button class="hbtn lang-tog" id="hbLang"><i id="lz" class="on">中</i>/<i id="le">EN</i></button>
-  <button class="hbtn" id="hbFull" title="全屏"></button>
+  <button class="hbtn" id="hbSet"></button>
+  <button class="hbtn" id="hbFull"></button>
 </header>
 
+<div id="themeBar" class="glass"></div>
+
 <div id="tip" class="glass"></div>
+<div id="toast"></div>
+
+<aside id="rank" class="glass">
+  <div class="rk-head">
+    <div><b id="rkTitle">排行榜</b><span id="rkSub"></span></div>
+    <button class="pn-close" id="rkClose"></button>
+  </div>
+  <div id="rkList" class="rk-list"></div>
+</aside>
 
 <aside id="panel" class="glass">
   <div class="pn-grab"></div>
   <div class="pn-head" id="pnHead">
-    <button class="pn-close" id="pnClose"></button>
+    <div class="pn-acts">
+      <button class="pn-ico" id="pnFav"></button>
+      <button class="pn-ico" id="pnCmp"></button>
+      <button class="pn-close" id="pnClose"></button>
+    </div>
     <div class="pn-title">
       <div class="pn-flag" id="pnFlag">🏳</div>
       <div class="pn-names"><h2 id="pnName">—</h2><p id="pnAlt"></p></div>
@@ -70,6 +79,8 @@
 <div id="tools">
   <button class="tbtn glass" id="tZoomIn"></button>
   <button class="tbtn glass" id="tZoomOut"></button>
+  <button class="tbtn glass" id="tRank"></button>
+  <button class="tbtn glass" id="tDice"></button>
   <button class="tbtn glass" id="tSpin"></button>
   <button class="tbtn glass" id="tReset"></button>
 </div>
@@ -78,6 +89,16 @@
   <div><b id="roCoord">—</b></div>
   <div><span id="roUTC">—</span> · <span id="roZoom">—</span></div>
   <div class="ver">BUILD <span id="roVer">—</span></div>
+</div>
+
+<div id="cmp" class="glass">
+  <div class="rk-head"><b id="cmpTitle">对比</b><button class="pn-close" id="cmpClose"></button></div>
+  <div id="cmpBody" class="cmp-body"></div>
+</div>
+
+<div id="settings" class="glass">
+  <div class="rk-head"><b id="setTitle">视觉设置</b><button class="pn-close" id="setClose"></button></div>
+  <div id="setBody" class="set-body"></div>
 </div>
 
 <div id="boot">

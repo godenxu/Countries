@@ -15,12 +15,13 @@ const now = new Date(Date.now() + 8 * 3600 * 1000);
 const p2 = (n) => String(n).padStart(2, '0');
 const VERSION = `${now.getUTCFullYear()}${p2(now.getUTCMonth() + 1)}${p2(now.getUTCDate())}`
   + `${p2(now.getUTCHours())}${p2(now.getUTCMinutes())}${p2(now.getUTCSeconds())}`;
-const STAGE = 'P1';
+const STAGE = 'P4';
 
 const gz64 = (buf) => zlib.gzipSync(buf, { level: 9 }).toString('base64');
 
 const css = fs.readFileSync(path.join(ROOT, 'src/style.css'), 'utf8');
-const jsFiles = ['00-util.js', '10-geo.js', '20-gl.js', '30-scene.js', '40-view.js', '50-ui.js', '60-main.js'];
+const jsFiles = ['00-util.js', '10-geo.js', '20-gl.js', '30-scene.js', '45-labels.js', '40-view.js',
+  '56-data.js', '55-panel.js', '50-ui.js', '60-main.js'];
 const earcut = fs.readFileSync(path.join(ROOT, 'node_modules/earcut/dist/earcut.min.js'), 'utf8');
 const appJs = jsFiles.map((f) => fs.readFileSync(path.join(ROOT, 'src/js', f), 'utf8')).join('\n');
 const js = `/* earcut (ISC) https://github.com/mapbox/earcut */\n${earcut}\n${appJs}`
@@ -97,27 +98,47 @@ const readme = `寰宇 ATLAS · 世界国家信息大全
    用手机浏览器打开后选择"添加到主屏幕 / 安装应用"。
    manifest.json、sw.js、icon-*.png 必须与 index.html 放在同一目录。
 
-【本版本包含】
-· WebGL2 自研渲染引擎：可旋转缩放的发光星球，双击"平面图"可从球体连续摊平为等积世界地图
+【地图引擎】
+· 自研 WebGL2，无第三方图形库。可旋转缩放的发光星球，一键连续摊平为等积世界地图（Equal Earth）
 · 真实疆域：Natural Earth 1:50m，237 个国家与地区，海岸线与国界分色
 · 一个中国口径：大陆与台湾、香港、澳门合并为同一实体，附南海断续线示意
-· 实时晨昏线（按当前 UTC 时间计算太阳直射点）、大气辉光、星空、泛光后期
-· 悬停高亮 + 点击选中飞行 + 国名标注避让
-· 国家档案面板：概览 / 地理 / 人口社会 / 来源（经济、政治、军事、文化模块将在 P2、P3 接入）
-· 中英双语切换、搜索、PWA 安装与离线缓存
+· 地名贴地渲染：国名以切平面四边形绘制在球面上，随地球一同旋转、透视收缩，不再是浮在屏幕上的文字
+
+【光影特效】
+实时晨昏线（按 UTC 计算太阳直射点，含均时差）· 昼夜交界暖色带 · 按人口密度分布的夜间灯光
+程序化云层 · 极地极光 · 雷达扫描光带 · 双层大气散射辉光 · 三级泛光 · 色散 / 暗角 / 胶片颗粒 / 扫描线
+选中国家抬升 + 金色描边 + 目标环 + 向邻国发射的流光弧线 · 点击涟漪 · 开场逐帧生成动画
+以上全部可在"视觉设置"里逐项调节强度。
+
+【数据】
+· 24 项量化指标（GDP、人均 GDP、PPP、增速、通胀、失业、进出口、债务、储备、军费、军费占比、
+  现役与预备役兵力、HDI、预期寿命、年龄中位数、生育率、城镇化、识字率、网络普及、人均碳排、
+  森林覆盖、可再生电力占比等），逐项标注年份与来源
+· 18 类国际组织成员（G7 / G20 / 金砖 / 上合 / 北约 / 欧盟 / 申根 / 东盟 / 非盟 / 阿盟 / 欧佩克 /
+  APEC / OECD / 英联邦 / 独联体 / 南方共同市场 / 美墨加 / 拥核国家）
+· 68 国政治制度详表（政体、立法机构、行政区划、法律体系、元首与政府首脑职位）
+· 58 国文化条目（国歌、国花、国兽、国菜、代表体育、主要节日）+ 90 国世界遗产数量
+· 40 国 2000–2024 年 GDP 走势（面板内迷你走势图）
+· 联网刷新：设备联网时可从世界银行开放数据刷新 19 项指标，带 ● 标记表示该值来自实时刷新
+
+【功能】
+专题着色（21 个指标，按分位着色）· 排行榜 Top 30 · 双国并排对比 · 收藏 · 随机漫游
+中英双语切换 · 中文 / 英文 / 拼音 / ISO 代码搜索 · PWA 安装与离线缓存
+折叠屏折叠态（底部三段抽屉）与展开态（左右双栏）自适应
 
 【键盘快捷键】
-/ 搜索　空格 自转开关　M 球面/平面切换　Esc 关闭面板
+/ 搜索　空格 自转　M 球面/平面　R 排行榜　C 对比　F 收藏　G 随机　Esc 关闭
 
 【数据来源】
 · 疆域：Natural Earth 1:50m（公有领域），经 world-atlas 转换
 · 国名与代码：world-countries（ODbL）
-· 政体 / 宗教 / 美食 / 国家象征 / 预期寿命等：country-json
-· 人口：2024 年估算基线（后续版本支持联网刷新）
+· 政体 / 宗教 / 美食 / 国家象征 / 海拔 / 海岸线：country-json
+· 量化指标：整理自 IMF / 世界银行 / SIPRI / UNDP / UN / ITU / FAO 公开口径
+· 联网刷新：World Bank Open Data API v2
 
 【口径声明】
 南海断续线为示意性绘制；藏南、阿克赛钦等争议地区暂按 Natural Earth 底图的实际控制线划分，
-不构成任何国家的官方标准地图。
+不构成任何国家的官方标准地图。政治条目只列职务名称，不固化具体任职人。
 `;
 fs.writeFileSync(path.join(DIST, 'README.txt'), readme);
 

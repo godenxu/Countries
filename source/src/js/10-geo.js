@@ -136,6 +136,10 @@ async function buildMesh(geo, onProgress) {
 
   function pushPoly(p, cid) {
     const n = p.length / 2;
+    let lo = 1e9, hi = -1e9;
+    for (let i = 0; i < n; i++) { const x = p[i * 2]; if (x < lo) lo = x; if (x > hi) hi = x; }
+    if (hi - lo > 180) return;   // wraps the antimeridian
+
     const start = vBase;
     for (let i = 0; i < n; i++) { posArr.push(p[i * 2], p[i * 2 + 1]); cidArr.push(cid); }
     vBase += n;
@@ -156,6 +160,7 @@ async function buildMesh(geo, onProgress) {
     const internal = owners.length > 1 ? 1 : 0;
     const o1 = owners[0], o2 = owners.length > 1 ? owners[1] : owners[0];
     for (let i = 0; i + 1 < n; i++) {
+      if (Math.abs(raw[i * 2] - raw[i * 2 + 2]) > 180) continue;
       segA.push(raw[i * 2], raw[i * 2 + 1]);
       segB.push(raw[i * 2 + 2], raw[i * 2 + 3]);
       segMeta.push(internal, o1, o2);

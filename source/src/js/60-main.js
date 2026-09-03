@@ -17,15 +17,18 @@ async function boot() {
     const geoBytes = await gunzip(b64ToBytes(GEO_B64));
     const geo = decodeGeo(geoBytes.buffer.slice(geoBytes.byteOffset, geoBytes.byteOffset + geoBytes.byteLength));
     const cBytes = await gunzip(b64ToBytes(META_B64));
-    const countries = JSON.parse(new TextDecoder().decode(cBytes));
+    const bundle = JSON.parse(new TextDecoder().decode(cBytes));
+    initData(bundle);
+    const countries = bundle.countries;
 
     bootStep(0.18, T('bootMesh'));
     const mesh = await buildMesh(geo, (p) => bootStep(0.18 + p * 0.62, T('bootMesh')));
 
-    bootStep(0.86, T('bootGL'));
+    bootStep(0.84, T('bootGL'));
     const view = new View($('#gl'), mesh, countries);
-    const ui = new UI(view, countries, mesh.meta, VERSION);
-    window.ATLAS = { view, ui, mesh, countries };
+    bootStep(0.94, T('bootLabel'));
+    const ui = new UIShell(view, VERSION);
+    window.ATLAS = { view, ui, mesh, countries, version: VERSION, data: DATA };
 
     bootStep(1, T('bootReady'));
     let visible = true;
@@ -34,7 +37,6 @@ async function boot() {
       requestAnimationFrame(loop);
       if (!visible) return;
       view.resize();
-      view.measure(now);
       const moving = view.step(now);
       view.render(now);
       ui.frame(now, moving);
@@ -42,8 +44,12 @@ async function boot() {
     requestAnimationFrame(loop);
     setTimeout(() => { $('#boot').classList.add('done'); }, 260);
     setTimeout(() => { $('#boot').remove(); }, 1100);
-    view.cam.dist = view.fitDist() * 1.5;
-    view.flyTo(105, 22, view.fitDist(), 1600);
+    view.cam.dist = view.fitDist() * 1.55;
+    view.flyTo(105, 22, view.fitDist(), 1900);
+    // opportunistic data refresh: silent, and only when the cache is stale
+    if (navigator.onLine && (!DATA.wb || Date.now() - DATA.wb.t > 7 * 86400000)) {
+      setTimeout(() => { refreshOnline().then((ok) => { if (ok) ui.refreshAll(); }); }, 4000);
+    }
   } catch (err) {
     console.error(err);
     const msg = String(err && err.message || err);

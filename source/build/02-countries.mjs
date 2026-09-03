@@ -3,6 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import worldCountries from 'world-countries/countries.json' with { type: 'json' };
 import { CAP_ZH, POP, REGION_ZH, SUBREGION_ZH, CUR_ZH, LANG_ZH, CHN_PARTS, ZH_FALLBACK } from './lib/curated.mjs';
+import { IND, IND_META, GDP_SERIES, GDP_SERIES_YEARS } from './lib/indicators.mjs';
+import { ORGS, ORG_META, TZ, PINYIN } from './lib/facts.mjs';
+import { GOV_ZH, POLITY, HERITAGE, CULTURE, NUKE_NOTE } from './lib/dossier.mjs';
 
 const req = (f) => JSON.parse(fs.readFileSync(path.resolve('node_modules/country-json/src', f), 'utf8'));
 const extras = {
@@ -96,12 +99,36 @@ for (const t of geo.topo) {
   const d = extraIndex.dish.get(key); if (d?.dish) rec.dish = d.dish;
   const s = extraIndex.sym.get(key); if (s?.symbol) rec.sym = s.symbol;
   const li = extraIndex.life.get(key); if (num(li?.expectancy)) rec.life = num(li.expectancy);
-  const ind = extraIndex.indep.get(key); if (ind?.independence_date) rec.indepDate = ind.independence_date;
+  const idp = extraIndex.indep.get(key); if (idp?.independence_date) rec.indepDate = idp.independence_date;
   const tp = extraIndex.temp.get(key); if (num(tp?.temperature) != null) rec.temp = num(tp.temperature);
   const co = extraIndex.coast.get(key); if (num(co?.costline) != null) rec.coast = num(co.costline);
   const el = extraIndex.elev.get(key);
   if (el) { if (num(el.max) != null) rec.elevMax = num(el.max); if (num(el.min) != null) rec.elevMin = num(el.min); }
   if (rec.area && rec.pop) rec.dens = +(rec.pop / rec.area).toFixed(1);
+  // --- quantitative layer
+  const ind = {};
+  for (const m of IND_META) { const v = IND[m.k] && IND[m.k][key]; if (v != null) ind[m.k] = v; }
+  if (ind.gdp != null && ind.gdpPc == null && rec.pop) ind.gdpPc = Math.round(ind.gdp * 1e9 / rec.pop);
+  if (ind.gdp != null && ind.milExp != null && ind.milPct == null) ind.milPct = +(ind.milExp / ind.gdp * 100).toFixed(2);
+  if (Object.keys(ind).length) rec.ind = ind;
+  if (GDP_SERIES[key]) rec.series = GDP_SERIES[key];
+
+  // --- memberships
+  const orgs = [];
+  for (const o of ORG_META) if (ORGS[o.k] && ORGS[o.k].indexOf(key) >= 0) orgs.push(o.k);
+  if (orgs.length) rec.orgs = orgs;
+
+  if (TZ[key]) rec.tz = TZ[key];
+  if (PINYIN[key]) {
+    rec.py = PINYIN[key];
+
+  }
+  if (POLITY[key]) rec.pol = POLITY[key];
+  else if (rec.gov && GOV_ZH[rec.gov]) rec.pol = { gov: GOV_ZH[rec.gov] };
+  if (HERITAGE[key] != null) rec.her = HERITAGE[key];
+  if (CULTURE[key]) rec.cul = CULTURE[key];
+  if (NUKE_NOTE[key]) rec.nuke = NUKE_NOTE[key];
+
   if (key === 'CHN') {
     rec.parts = CHN_PARTS;
     rec.pop = CHN_PARTS.reduce((a, p) => a + p.pop, 0);
@@ -114,5 +141,13 @@ const missing = out.filter((r) => !r.a2).map((r) => r.k);
 const noPop = out.filter((r) => r.pop == null).map((r) => r.k);
 console.log(`records ${out.length}; no ISO2 ${missing.length} [${missing}]; no pop ${noPop.length} [${noPop}]`);
 for (const [n, m] of Object.entries(extraIndex)) console.log(`  ${n}: matched ${m.size}`);
-fs.writeFileSync(path.resolve('data/countries.json'), JSON.stringify(out));
+// indicator + organisation dictionaries travel with the data
+const bundle = { countries: out, indMeta: IND_META, orgMeta: ORG_META, seriesYears: GDP_SERIES_YEARS };
+fs.writeFileSync(path.resolve('data/countries.json'), JSON.stringify(bundle));
+const cov = {};
+for (const m of IND_META) cov[m.k] = out.filter((r) => r.ind && r.ind[m.k] != null).length;
+console.log('indicator coverage:', JSON.stringify(cov));
+console.log('with orgs', out.filter((r) => r.orgs).length, '| polity', out.filter((r) => r.pol).length,
+  '| culture', out.filter((r) => r.cul).length, '| series', out.filter((r) => r.series).length,
+  '| pinyin', out.filter((r) => r.py).length, '| tz', out.filter((r) => r.tz).length);
 console.log(`countries.json ${(fs.statSync('data/countries.json').size / 1024).toFixed(0)} KB raw`);
