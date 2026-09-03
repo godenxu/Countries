@@ -210,14 +210,35 @@ async function buildMesh(geo, onProgress) {
     m.lat = Math.asin(clamp(m.cy, -1, 1)) / DEG;
     m.lon = Math.atan2(m.cx, m.cz) / DEG;
   });
+  // Per-triangle angular spread from the centroid, area-weighted so a country's
+  // camera-fit radius reflects its main landmass rather than being dragged out
+  // by a small, far-flung territory (French Guiana, Hawaii, Svalbard...).
   const maxAng = meta.map(() => 0);
+  const sqAcc = meta.map(() => [0, 0]); // [sum(area*d^2), sum(area)]
+  for (let t = 0; t < idxArr.length; t += 3) {
+    const i = idxArr[t], j = idxArr[t + 1], k = idxArr[t + 2];
+    const cid = cidArr[i], m = meta[cid];
+    const lo = (posArr[i * 2] + posArr[j * 2] + posArr[k * 2]) / 3;
+    const la = (posArr[i * 2 + 1] + posArr[j * 2 + 1] + posArr[k * 2 + 1]) / 3;
+    const a = Math.abs((posArr[j * 2] - posArr[i * 2]) * (posArr[k * 2 + 1] - posArr[i * 2 + 1])
+      - (posArr[k * 2] - posArr[i * 2]) * (posArr[j * 2 + 1] - posArr[i * 2 + 1])) * 0.5 * Math.cos(la * DEG);
+    const v = lonLatToVec(lo, la);
+    const d = Math.acos(clamp(v[0] * m.cx + v[1] * m.cy + v[2] * m.cz, -1, 1));
+    sqAcc[cid][0] += a * d * d; sqAcc[cid][1] += a;
+  }
   for (let i = 0; i < cidArr.length; i++) {
     const cid = cidArr[i], m = meta[cid];
     const v = lonLatToVec(posArr[i * 2], posArr[i * 2 + 1]);
     const d = Math.acos(clamp(v[0] * m.cx + v[1] * m.cy + v[2] * m.cz, -1, 1));
     if (d > maxAng[cid]) maxAng[cid] = d;
   }
-  meta.forEach((m, i) => { m.r = Math.max(0.02, maxAng[i]); });
+  meta.forEach((m, i) => {
+    m.r = Math.max(0.02, maxAng[i]);
+    const rms = Math.sqrt(sqAcc[i][0] / Math.max(1e-9, sqAcc[i][1]));
+    // camera-fit radius: robust to outlier fragments, still allows genuinely
+    // sprawling countries (Russia, Indonesia) to pull the camera back further
+    m.rFit = Math.max(0.02, Math.min(m.r, rms * 2.4));
+  });
 
   return {
     fill: {

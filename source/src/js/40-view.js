@@ -161,7 +161,7 @@ class View {
     const inst = buildLabelInstances(this.countries, this.mesh.meta, atlas);
     if (!this.atlasTex) {
       this.atlasTex = gl.createTexture();
-      this.lbBuf = { ll: gl.createBuffer(), uv: gl.createBuffer(), info: gl.createBuffer() };
+      this.lbBuf = { ll: gl.createBuffer(), uv: gl.createBuffer(), info: gl.createBuffer(), tier: gl.createBuffer() };
     }
     gl.bindTexture(gl.TEXTURE_2D, this.atlasTex);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
@@ -173,6 +173,7 @@ class View {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     const upd = (buf, arr) => { gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, arr, gl.STATIC_DRAW); };
     upd(this.lbBuf.ll, inst.ll); upd(this.lbBuf.uv, inst.uv); upd(this.lbBuf.info, inst.info);
+    upd(this.lbBuf.tier, inst.tier);
     this.labelCount = inst.count;
     this.dirty = true;
   }
@@ -193,7 +194,11 @@ class View {
     const w = Math.max(2, Math.round(this.canvas.clientWidth * dpr));
     const h = Math.max(2, Math.round(this.canvas.clientHeight * dpr));
     if (w === this.W && h === this.H) return;
-    const wasFit = this.lastFit && Math.abs(this.cam.dist - this.lastFit) < this.lastFit * 0.06;
+    // a resize mid-flight (e.g. the on-screen keyboard opening/closing while a
+    // search result is animating in) must never snap the camera — that reads
+    // as a flash-cut. Only re-fit when the camera is idle.
+    const settled = !this.anim && !this.morphAnim && !this.shiftAnim;
+    const wasFit = settled && this.lastFit && Math.abs(this.cam.dist - this.lastFit) < this.lastFit * 0.06;
     this.W = w; this.H = h; this.dpr = dpr;
     this.canvas.width = w; this.canvas.height = h;
     this.fboScene.resize(w, h);
@@ -268,6 +273,23 @@ class View {
   fitGlobe() { return 1.2 / (Math.tan(FOV / 2) * Math.min(this.aspect(), 1)); }
   fitPlane() { const t = Math.tan(FOV / 2), a = this.aspect(); return Math.max(2.08 / (t * a), 1.12 / t); }
   fitDist() { return this.cam.morph > 0.5 ? this.fitPlane() : this.fitGlobe(); }
+
+  // Distance that frames one country's full extent inside the *visible* map
+  // area (visW/visH exclude whatever the detail panel currently covers), so
+  // every country lands at a consistent, panel-safe zoom regardless of shape.
+  fitCountryDist(rRad, visW, visH) {
+    const t = Math.tan(FOV / 2);
+    const visAspect = Math.max(0.15, visW / Math.max(1, visH));
+    const k = Math.min(visAspect, 1);
+    const margin = 1.55;
+    if (this.cam.morph > 0.5) {
+      const lin = rRad * PLANE_SCALE * 1.18 * margin;
+      return clamp(lin / (t * k), 0.24, this.fitPlane() * 1.05);
+    }
+    const lin = Math.sin(Math.min(rRad, 1.4)) * margin;
+    const d = 1 + lin / (t * k);
+    return clamp(d, 1.06, this.fitGlobe() * 1.05);
+  }
 
   flyTo(lon, lat, dist, ms) {
     const c = this.cam;
@@ -581,6 +603,12 @@ class View {
     gl.uniform1f(p.u.uPix, LABEL_PX * this.worldPerPixel());
     gl.uniform1f(p.u.uMinArea, Math.max(120, 26000 * this.cam.dist * this.cam.dist * (1 + 0.9 * easeIO(clamp(this.cam.morph, 0, 1)))));
     gl.uniform1f(p.u.uFade, clamp((this.build - 0.55) * 3, 0, 1));
+    // cities fade in as a group once the view is roughly "one country" wide,
+    // independent of each city's own (fixed, small) label footprint
+    const cityFade = this.cam.morph > 0.5
+      ? clamp((1.05 - this.cam.dist) / 0.55, 0, 1)
+      : clamp((3.0 - this.cam.dist) / 1.0, 0, 1);
+    gl.uniform1f(p.u.uCityFade, this.fx.cities === false ? 0 : cityFade);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.bQuad01);
     gl.enableVertexAttribArray(p.a.aCorner);
     gl.vertexAttribPointer(p.a.aCorner, 2, gl.FLOAT, false, 0, 0);
@@ -594,6 +622,7 @@ class View {
     bind(p.a.aLL, this.lbBuf.ll, 2);
     bind(p.a.aUV, this.lbBuf.uv, 4);
     bind(p.a.aInfo, this.lbBuf.info, 4);
+    bind(p.a.aTier, this.lbBuf.tier, 1);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.labelCount);
     gl.vertexAttribDivisor(p.a.aLL, 0); gl.vertexAttribDivisor(p.a.aUV, 0); gl.vertexAttribDivisor(p.a.aInfo, 0);
   }

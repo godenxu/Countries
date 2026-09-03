@@ -105,17 +105,16 @@ void main(){
   vec3 n = normalize(vN);
   float ndl = dot(n, uSun);
   float day = smoothstep(-0.16, 0.20, ndl);
-  day = mix(day, mix(day, 1.0, 0.74), uMorph);
   float g = vn2(vLL*min(uNight*0.35, 2.2))*0.6 + vn2(vLL*min(uNight*0.9, 6.0))*0.4;
   vec3 c = base * (0.965 + g*0.07);
   // terminator warmth on the lit side of the boundary
-  float dusk = exp(-abs(ndl)*9.0) * (1.0-uMorph*0.8);
+  float dusk = exp(-abs(ndl)*9.0) * (1.0-uMorph*0.25);
   c = mix(c, c*vec3(1.35, 0.92, 0.62), dusk*0.55);
   vec3 nightC = base*0.30 + vec3(0.024, 0.038, 0.062);
   // settlement glow, weighted by the country's population density
   float ns = vn2(vLL*uNight*0.45)*0.62 + vn2(vLL*uNight*1.35 + 11.7)*0.38;
   float lampMask = smoothstep(0.88 - 0.34*dens, 1.0, ns);
-  float lamp = lampMask * (1.0 - day) * (1.0 - uMorph*0.85);
+  float lamp = lampMask * (1.0 - day);
   c = mix(nightC, c*1.05, day);
   c += vec3(1.0, 0.72, 0.38) * lamp * 0.85 * (0.86 + 0.14*sin(uTime*1.8 + ns*30.0));
   // scanning sweep
@@ -145,7 +144,6 @@ void main(){
   vec3 n = normalize(vN);
   float ndl = dot(n, uSun);
   float day = smoothstep(-0.16, 0.22, ndl);
-  day = mix(day, mix(day, 1.0, 0.74), uMorph);
   float lat = abs(vLL.y)/90.0;
   vec3 deepC = vec3(0.024, 0.078, 0.140);
   vec3 midC  = vec3(0.043, 0.180, 0.286);
@@ -157,7 +155,7 @@ void main(){
   // slow surface ripple for life
   float rip = vnoise(vec3(vLL*0.35, uTime*0.05))*0.5 + vnoise(vec3(vLL*1.1, uTime*0.08))*0.5;
   c *= 0.94 + rip*0.13;
-  float dusk = exp(-abs(ndl)*9.0) * (1.0-uMorph*0.8);
+  float dusk = exp(-abs(ndl)*9.0) * (1.0-uMorph*0.25);
   c = mix(c, c*vec3(1.5, 0.85, 0.55), dusk*0.5);
   vec3 nightC = c*0.22 + vec3(0.010, 0.024, 0.046);
   c = mix(nightC, c, day);
@@ -259,15 +257,22 @@ in vec2 aCorner;
 in vec2 aLL;
 in vec4 aUV;        // x,y,w,h in atlas space
 in vec4 aInfo;      // scale, area, cid, pixel aspect
-uniform float uPix, uMinArea, uSel, uSelLift, uFade;
+in float aTier;     // 0 = country, 1 = city
+uniform float uPix, uMinArea, uSel, uSelLift, uFade, uCityFade;
 out vec2 vUV;
 out float vAlpha;
 out float vSel;
+out float vTier;
 void main(){
   vec3 east, north, n;
   morphFrame(aLL, east, north);
-  float lift = (abs(aInfo.z - uSel) < 0.5) ? uSelLift : 0.0;
-  vec3 anchor = morphPos(aLL, 0.010 + lift, n);
+  // a city's cid is offset by 10000 over its host country's index (keeps it
+  // out of the gold-highlight match below); undo that to test the *host*
+  // against uSel, so a city rises along with its country's selection lift
+  // and never ends up buried under the raised land mesh
+  float hostIdx = mix(aInfo.z, aInfo.z - 10000.0, aTier);
+  float lift = (abs(hostIdx - uSel) < 0.5) ? uSelLift : 0.0;
+  vec3 anchor = morphPos(aLL, 0.009 + lift + aTier*0.0035, n);
   float h = uPix * aInfo.x;
   float w = h * aInfo.w;
   vec2 c = aCorner - 0.5;
@@ -280,21 +285,26 @@ void main(){
     facing = smoothstep(0.20, 0.44, d);
   }
   float zoomIn = smoothstep(uMinArea*0.6, uMinArea*1.8, aInfo.y);
-  vAlpha = facing * zoomIn * uFade;
+  vAlpha = facing * mix(zoomIn, uCityFade, aTier) * uFade;
   vSel = (abs(aInfo.z - uSel) < 0.5) ? 1.0 : 0.0;
+  vTier = aTier;
 }`;
 
 const FS_LABEL = `#version 300 es
 precision highp float;
 uniform sampler2D uAtlas;
 uniform float uTime;
-in vec2 vUV; in float vAlpha; in float vSel;
+in vec2 vUV; in float vAlpha; in float vSel; in float vTier;
 out vec4 o;
 void main(){
   vec4 t = texture(uAtlas, vUV);
   if (t.a < 0.02 || vAlpha < 0.01) discard;
-  vec3 c = mix(vec3(0.93, 0.98, 0.97), vec3(1.0, 0.82, 0.42), vSel);
-  float glow = vSel > 0.5 ? 0.30 + 0.14*sin(uTime*3.0) : 0.0;
+  // countries: a flat halo+fill mask tinted live (hover/selection colour can
+  // change at runtime). cities: their pill/dot/text is baked into the atlas
+  // in full colour already, so sample it straight through.
+  vec3 uniColor = mix(vec3(0.80, 0.96, 0.91), vec3(1.0, 0.82, 0.42), vSel);
+  vec3 c = mix(uniColor, t.rgb, vTier);
+  float glow = (vSel > 0.5 && vTier < 0.5) ? 0.30 + 0.14*sin(uTime*3.0) : 0.0;
   o = vec4(c*(1.0+glow), t.a*vAlpha);
 }`;
 

@@ -112,7 +112,7 @@ const UI = {
   },
 };
 
-function renderDossier(body, i, tab, onPick) {
+function renderDossier(body, i, tab, onPick, onCity) {
   const c = DATA.countries[i];
   const zh = LANG === 'zh';
   const NA = T('na');
@@ -173,6 +173,19 @@ function renderDossier(body, i, tab, onPick) {
     UI.row(s, T('kLandlocked'), c.landlocked ? T('yes') : T('no'));
     UI.row(s, T('kNeighbors'), String(c.borders.length));
     UI.row(s, T('kTz'), c.tz ? 'UTC ' + c.tz : NA);
+    if (c.cities && c.cities.length) {
+      const sc = UI.sect(body, T('sectCities'));
+      const box = el('div', 'cities');
+      for (const city of c.cities) {
+        const row = el('div', 'cityrow');
+        row.appendChild(el('span', 'cn', zh ? city.zh : city.en));
+        row.appendChild(el('span', 'ce', zh ? city.en : city.zh));
+        row.appendChild(el('span', 'cp', city.pop ? fmtBig(city.pop).v + fmtBig(city.pop).u : ''));
+        row.onclick = () => onCity && onCity(city.lat, city.lon, zh ? city.zh : city.en);
+        box.appendChild(row);
+      }
+      sc.appendChild(box);
+    }
     const s2 = UI.sect(body, T('sectEnv'));
     for (const k of ['forest', 'co2', 'renew']) UI.metric(s2, c, k, i);
   }

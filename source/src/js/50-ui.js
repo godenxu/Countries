@@ -18,6 +18,15 @@ const ICON = {
   dice: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></svg>',
 };
 
+// system-only stacks (no webfont fetches, so this stays a self-contained file)
+const FONT_STACKS = [
+  { k: 'pingfang', labelKey: 'fontPingfang', stack: '-apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Segoe UI", sans-serif' },
+  { k: 'yahei', labelKey: 'fontYahei', stack: '"Microsoft YaHei", "PingFang SC", "Heiti SC", sans-serif' },
+  { k: 'hiragino', labelKey: 'fontHiragino', stack: '"Hiragino Sans GB", "PingFang SC", sans-serif' },
+  { k: 'songti', labelKey: 'fontSongti', stack: '"Songti SC", "SimSun", STSong, serif' },
+  { k: 'mono', labelKey: 'fontMono', stack: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace' },
+];
+
 class UIShell {
   constructor(view, version) {
     this.view = view;
@@ -27,8 +36,12 @@ class UIShell {
     this.selId = -1;
     this.favs = JSON.parse(localStorage.getItem('atlas.favs') || '[]');
     this.cmpA = -1; this.cmpB = -1;
+    this.roamSec = clamp(+localStorage.getItem('atlas.roamSec') || 15, 3, 120);
+    this.roamTimer = null;
+    this.fontKey = localStorage.getItem('atlas.font') || 'pingfang';
     this.build();
     this.wire();
+    this.setFont(this.fontKey);
     this.applyLang();
   }
 
@@ -96,18 +109,51 @@ class UIShell {
     add('grain', 'setGrain', 0, 0.06, 0.002);
     add('aber', 'setAber', 0, 0.006, 0.0002);
     add('scan', 'setScan', 0, 0.05, 0.002);
-    const t1 = el('div', 'setrow');
-    t1.appendChild(el('span', 'k', T('setSweep')));
-    const cb = document.createElement('input');
-    cb.type = 'checkbox'; cb.checked = fx.sweep;
-    cb.onchange = () => { fx.sweep = cb.checked; };
-    t1.appendChild(cb); host.appendChild(t1);
-    const t2 = el('div', 'setrow');
-    t2.appendChild(el('span', 'k', T('setLabels')));
-    const cb2 = document.createElement('input');
-    cb2.type = 'checkbox'; cb2.checked = fx.labels;
-    cb2.onchange = () => { fx.labels = cb2.checked; this.view.dirty = true; };
-    t2.appendChild(cb2); host.appendChild(t2);
+    const addBool = (labelKey, get, set) => {
+      const r = el('div', 'setrow');
+      r.appendChild(el('span', 'k', T(labelKey)));
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = get();
+      cb.onchange = () => { set(cb.checked); this.view.dirty = true; };
+      r.appendChild(cb); host.appendChild(r);
+    };
+    addBool('setSweep', () => fx.sweep, (v) => { fx.sweep = v; });
+    addBool('setLabels', () => fx.labels, (v) => { fx.labels = v; });
+    addBool('setCities', () => fx.cities !== false, (v) => { fx.cities = v; });
+
+    const rr = el('div', 'setrow');
+    rr.appendChild(el('span', 'k', T('setRoam')));
+    const num = document.createElement('input');
+    num.type = 'number'; num.min = '3'; num.max = '120'; num.step = '1';
+    num.value = this.roamSec;
+    num.oninput = () => {
+      const v = clamp(+num.value || 15, 3, 120);
+      this.roamSec = v;
+      localStorage.setItem('atlas.roamSec', String(v));
+      if (this.roamTimer) this.startRoam(true);
+    };
+    rr.appendChild(num); host.appendChild(rr);
+
+    const fr = el('div', 'setrow');
+    fr.appendChild(el('span', 'k', T('setFont')));
+    const sel = document.createElement('select');
+    for (const f of FONT_STACKS) {
+      const opt = document.createElement('option');
+      opt.value = f.k; opt.textContent = T(f.labelKey);
+      if (f.k === this.fontKey) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.onchange = () => this.setFont(sel.value);
+    fr.appendChild(sel); host.appendChild(fr);
+  }
+
+  setFont(key) {
+    const f = FONT_STACKS.find((x) => x.k === key) || FONT_STACKS[0];
+    this.fontKey = f.k;
+    localStorage.setItem('atlas.font', f.k);
+    document.documentElement.style.setProperty('--font', f.stack);
+    LABEL_FONT_STACK = f.stack;
+    this.view.setupLabels();
   }
 
   wire() {
@@ -127,7 +173,7 @@ class UIShell {
     $('#tSpin').onclick = () => { v.spin = !v.spin; v.spinIdle = 0; $('#tSpin').classList.toggle('on', v.spin); };
     $('#tSpin').classList.toggle('on', v.spin);
     $('#tRank').onclick = () => this.toggleRank();
-    $('#tDice').onclick = () => this.randomPick();
+    $('#tDice').onclick = () => this.toggleRoam();
     $('#pnClose').onclick = () => this.select(-1);
     $('#pnFav').onclick = () => this.toggleFav(this.selId);
     $('#pnCmp').onclick = () => this.startCompare();
@@ -164,13 +210,16 @@ class UIShell {
       if (e.target.tagName === 'INPUT') return;
       const k = e.key.toLowerCase();
       if (e.key === '/') { e.preventDefault(); sb.focus(); }
-      if (e.key === 'Escape') { this.select(-1); $('#cmp').classList.remove('open'); $('#settings').classList.remove('open'); }
+      if (e.key === 'Escape') {
+        if (this.cmpPick) this.cancelCompare();
+        this.select(-1); $('#cmp').classList.remove('open'); $('#settings').classList.remove('open');
+      }
       if (e.key === ' ') { e.preventDefault(); $('#tSpin').click(); }
       if (k === 'm') this.setMode(v.cam.morph > 0.5 ? 0 : 1);
       if (k === 'r') this.toggleRank();
       if (k === 'c' && this.selId >= 0) this.startCompare();
       if (k === 'f' && this.selId >= 0) this.toggleFav(this.selId);
-      if (k === 'g') this.randomPick();
+      if (k === 'g') this.toggleRoam();
     });
 
     v.onHover = (x, y) => { this.hoverPos = { x, y }; this.hoverDirty = true; };
@@ -184,51 +233,70 @@ class UIShell {
       if (id >= 0) this.flyToCountry(id);
     };
     window.addEventListener('resize', () => { v.resize(); v.dirty = true; this.updateShift(); });
+    // any manual touch of the map cancels an active roam
+    v.canvas.addEventListener('pointerdown', () => { if (this.roamTimer) this.stopRoam(); });
+    v.canvas.addEventListener('wheel', () => { if (this.roamTimer) this.stopRoam(); }, { passive: true });
   }
 
   cx() { return this.view.canvas.clientWidth / 2; }
   cy() { return this.view.canvas.clientHeight / 2; }
 
+  // size of the map area not covered by the open detail panel, in CSS px —
+  // shared by the lens-shift (keeps the subject clear of the panel) and by
+  // the country-fit zoom (so "fit" means fit into what's actually visible)
+  panelReserve() {
+    const W = this.view.canvas.clientWidth, H = this.view.canvas.clientHeight;
+    const open = this.selId >= 0 && $('#panel').classList.contains('open');
+    if (!open) return { w: W, h: H, side: null, amount: 0 };
+    if (W > 720) {
+      const pw = $('#panel').getBoundingClientRect().width;
+      return { w: Math.max(160, W - pw), h: H, side: 'x', amount: pw };
+    }
+    const ph = $('#panel').classList.contains('full') ? H * 0.88 : Math.min(H * 0.5, 460);
+    return { w: W, h: Math.max(160, H - ph), side: 'y', amount: ph };
+  }
+
   flyToCountry(i) {
     const v = this.view, m = v.mesh.meta[i];
-    const d = clamp(m.r * 3.4 + 0.55, v.cam.morph > 0.5 ? 0.3 : 1.32, v.fitDist() * 0.98);
+    const vis = this.panelReserve();
+    const d = v.fitCountryDist(m.rFit != null ? m.rFit : m.r, vis.w, vis.h);
     v.flyTo(m.lon, m.lat, d);
   }
 
   setMode(m) {
     const v = this.view;
-    const fitted = Math.abs(v.cam.dist - v.fitDist()) < v.fitDist() * 0.12;
     v.setMorph(m);
-    // a fitted view switches to the classic whole-world framing
-    if (fitted && this.selId < 0) setTimeout(() => v.flyTo(m ? 10 : 105, m ? 12 : 22, v.fitDist(), 900), 60);
+    // always land on a clean, fully-framed view for the new viewport shape —
+    // never leave the user on a stale pan/zoom from the previous mode
+    if (this.selId >= 0) setTimeout(() => this.flyToCountry(this.selId), 60);
+    else setTimeout(() => v.flyTo(v.cam.lon, m ? 6 : 22, v.fitDist(), 900), 60);
     $('#hbGlobe').classList.toggle('on', !m);
     $('#hbMap').classList.toggle('on', !!m);
   }
 
   updateShift() {
-    const v = this.view, open = this.selId >= 0 && $('#panel').classList.contains('open');
-    const W = v.canvas.clientWidth, H = v.canvas.clientHeight;
+    const v = this.view;
+    const { w: W, h: H } = { w: v.canvas.clientWidth, h: v.canvas.clientHeight };
+    const res = this.panelReserve();
     const bar = $('#themeBar');
-    if (!open) {
+    if (!res.side) {
       v.setShift(0, 0);
       $('#tools').style.transform = '';
       if (W > 720) { bar.style.left = '50%'; bar.style.maxWidth = ''; bar.style.transform = 'translateX(-50%)'; }
       else { bar.style.left = ''; bar.style.maxWidth = ''; bar.style.transform = ''; }
       return;
     }
-    if (W > 720) {
-      const pw = $('#panel').getBoundingClientRect().width;
-      v.setShift(pw / W, 0);
-      $('#tools').style.transform = `translateX(${-Math.round(pw)}px)`;
+    if (res.side === 'x') {
+      v.setShift(res.amount / W, 0);
+      $('#tools').style.transform = `translateX(${-Math.round(res.amount)}px)`;
       // keep the theme bar centred on the visible map, never under the panel
-      bar.style.left = Math.round((W - pw) / 2) + 'px';
-      bar.style.maxWidth = Math.max(240, W - pw - 24) + 'px';
+      bar.style.left = Math.round((W - res.amount) / 2) + 'px';
+      bar.style.maxWidth = Math.max(240, W - res.amount - 24) + 'px';
       bar.style.transform = 'translateX(-50%)';
     } else {
       $('#tools').style.transform = '';
       bar.style.left = ''; bar.style.maxWidth = ''; bar.style.transform = '';
-      const ph = $('#panel').classList.contains('full') ? H * 0.48 : 236;
-      v.setShift(0, -ph / H);
+      v.setShift(0, -res.amount / H);
     }
   }
 
@@ -347,7 +415,25 @@ class UIShell {
   randomPick() {
     const pool = DATA.countries.map((c, i) => [c, i]).filter(([c]) => c.un && (c.pop || 0) > 200000);
     const [, i] = pool[Math.floor(Math.random() * pool.length)];
+    this._roaming = true;
     this.select(i); this.flyToCountry(i);
+    this._roaming = false;
+  }
+
+  /* ---------------- roam: auto-advance through random countries ---------------- */
+  toggleRoam() {
+    if (this.roamTimer) this.stopRoam(); else this.startRoam();
+  }
+  startRoam(restart) {
+    if (this.roamTimer) clearInterval(this.roamTimer);
+    if (!restart) this.randomPick();
+    this.roamTimer = setInterval(() => this.randomPick(), this.roamSec * 1000);
+    $('#tDice').classList.add('on');
+  }
+  stopRoam() {
+    if (this.roamTimer) clearInterval(this.roamTimer);
+    this.roamTimer = null;
+    $('#tDice').classList.remove('on');
   }
 
   /* ---------------- favourites ---------------- */
@@ -371,13 +457,22 @@ class UIShell {
 
   /* ---------------- compare ---------------- */
   startCompare() {
+    if (this.cmpPick) { this.cancelCompare(); return; }
     if (this.selId < 0) return;
     this.cmpA = this.selId;
     this.cmpPick = true;
+    $('#pnCmp').classList.add('on');
     this.toast(T('cmpPick'));
   }
-  finishCompare(id) {
+  cancelCompare() {
     this.cmpPick = false;
+    $('#pnCmp').classList.remove('on');
+    this.toast(T('cmpCancel'));
+  }
+  finishCompare(id) {
+    if (id === this.cmpA) { this.toast(T('cmpSelf')); return; }
+    this.cmpPick = false;
+    $('#pnCmp').classList.remove('on');
     this.cmpB = id;
     renderCompare($('#cmpBody'), this.cmpA, this.cmpB);
     $('#cmp').classList.add('open');
@@ -421,6 +516,7 @@ class UIShell {
 
   /* ---------------- selection & panel ---------------- */
   select(id) {
+    if (!this._roaming && this.roamTimer) this.stopRoam();
     this.selId = id;
     this.view.sel = id;
     this.view.dirty = true;
@@ -456,7 +552,9 @@ class UIShell {
 
   renderBody() {
     if (this.selId < 0) return;
-    renderDossier($('#pnBody'), this.selId, this.tab, (j) => { this.select(j); this.flyToCountry(j); });
+    renderDossier($('#pnBody'), this.selId, this.tab,
+      (j) => { this.select(j); this.flyToCountry(j); },
+      (lat, lon) => { this.view.flyTo(lon, lat, this.view.cam.morph > 0.5 ? 0.14 : 1.12, 850); });
     // count-up animation on the KPI numbers
     $$('#pnBody .kpi .cnt').forEach((n, k) => {
       n.style.opacity = '0'; n.style.transform = 'translateY(6px)';

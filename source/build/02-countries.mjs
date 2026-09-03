@@ -6,6 +6,7 @@ import { CAP_ZH, POP, REGION_ZH, SUBREGION_ZH, CUR_ZH, LANG_ZH, CHN_PARTS, ZH_FA
 import { IND, IND_META, GDP_SERIES, GDP_SERIES_YEARS } from './lib/indicators.mjs';
 import { ORGS, ORG_META, TZ, PINYIN } from './lib/facts.mjs';
 import { GOV_ZH, POLITY, HERITAGE, CULTURE, NUKE_NOTE } from './lib/dossier.mjs';
+import { CITIES } from './lib/cities.mjs';
 
 const req = (f) => JSON.parse(fs.readFileSync(path.resolve('node_modules/country-json/src', f), 'utf8'));
 const extras = {
@@ -128,6 +129,9 @@ for (const t of geo.topo) {
   if (HERITAGE[key] != null) rec.her = HERITAGE[key];
   if (CULTURE[key]) rec.cul = CULTURE[key];
   if (NUKE_NOTE[key]) rec.nuke = NUKE_NOTE[key];
+  if (CITIES[key]) {
+    rec.cities = CITIES[key].slice(0, 3).map(([zh, en, pop, lat, lon]) => ({ zh, en, pop, lat, lon }));
+  }
 
   if (key === 'CHN') {
     rec.parts = CHN_PARTS;

@@ -229,12 +229,14 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   #searchBox:focus { width: min(58vw, 240px); padding: 0 10px 0 30px; color: var(--ink); }
   #legend { display: none; }
   #panel {
-    left: 0; right: 0; top: auto; bottom: 0; width: auto; height: 78vh;
+    left: 0; right: 0; top: auto; bottom: 0; width: auto; height: 88vh;
     border-radius: 18px 18px 0 0; border: 1px solid var(--line); border-bottom: none;
     transform: translateY(103%);
     transition: transform .4s cubic-bezier(.22,.9,.28,1);
   }
-  #panel.open { transform: translateY(calc(100% - 236px)); }
+  /* peek state shows roughly half the screen (never more than 460px) so the
+     KPI row and the first section are readable without an extra tap */
+  #panel.open { transform: translateY(calc(100% - min(50vh, 460px))); }
   #panel.open.full { transform: translateY(0); }
   .pn-grab { display: block; width: 38px; height: 4px; border-radius: 2px;
     background: rgba(127,154,163,.4); margin: 8px auto 2px; }
@@ -419,6 +421,28 @@ i.live { color: var(--aurora); font-size: 8px; margin-left: 5px; vertical-align:
 .setrow .k { flex: 1; color: var(--muted); }
 .setrow input[type=range] { flex: 1.2; accent-color: var(--aurora); }
 .setrow input[type=checkbox] { accent-color: var(--aurora); width: 16px; height: 16px; }
+.setrow input[type=number] {
+  width: 64px; padding: 5px 7px; border-radius: 6px; text-align: right;
+  background: rgba(12,28,38,.7); border: 1px solid rgba(70,224,184,.22); color: var(--ink);
+  font: inherit; font-variant-numeric: tabular-nums;
+}
+.setrow select {
+  flex: 1.2; padding: 5px 8px; border-radius: 6px; appearance: none;
+  background: rgba(12,28,38,.7); border: 1px solid rgba(70,224,184,.22); color: var(--ink); font: inherit;
+}
+.setrow select:focus, .setrow input[type=number]:focus { outline: none; border-color: var(--line-str); }
+
+/* ---------- major cities ---------- */
+.cities { display: flex; flex-direction: column; gap: 1px; }
+.cityrow {
+  display: flex; align-items: baseline; gap: 8px; padding: 6px 4px; border-radius: 6px;
+  cursor: pointer; transition: background .15s; border-bottom: 1px dashed rgba(70,224,184,.08);
+}
+.cityrow:last-child { border-bottom: none; }
+.cityrow:hover { background: rgba(70,224,184,.10); }
+.cityrow .cn { font-size: 12.5px; color: var(--ink); font-weight: 500; }
+.cityrow .ce { font-size: 10px; color: var(--muted-dim); flex: 1; }
+.cityrow .cp { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 @media (max-width: 1180px) {
   #readout { bottom: calc(58px + var(--sab)); }
