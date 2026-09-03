@@ -1,0 +1,22 @@
+{
+  "name": "atlas-countries",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "World Countries Atlas - single-file WebGL globe app",
+  "scripts": {
+    "geo": "node build/01-geometry.mjs",
+    "meta": "node build/02-countries.mjs",
+    "bundle": "node build/03-bundle.mjs",
+    "build": "npm run geo && npm run meta && npm run bundle"
+  },
+  "dependencies": {
+    "country-json": "^2.3.0",
+    "earcut": "^3.2.3",
+    "world-atlas": "^2.0.2",
+    "world-countries": "^5.1.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>寰宇 · 世界国家信息大全</title>
+<meta name="description" content="World country almanac on an interactive WebGL globe.">
+<meta name="theme-color" content="#04070e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="寰宇">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<style>/*__CSS__*/</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="gl"></canvas>
+  <div id="labels"></div>
+</div>
+
+<div id="legend" class="glass cut">
+  <div class="k"><i style="border-color:rgba(140,237,219,.85)"></i><span id="lgCoast">海岸线</span></div>
+  <div class="k"><i style="border-color:rgba(140,237,219,.42)"></i><span id="lgBorder">国界</span></div>
+  <div class="k"><i style="border-color:rgba(242,181,82,.9);border-top-style:dashed"></i><span id="lgDash">南海断续线（示意）</span></div>
+</div>
+
+<header id="hdr">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 32 32" fill="none" stroke="#46e0b8" stroke-width="1.3">
+      <circle cx="16" cy="16" r="12.4"/>
+      <ellipse cx="16" cy="16" rx="5.2" ry="12.4"/>
+      <path d="M3.6 16h24.8M6.1 8.6h19.8M6.1 23.4h19.8" opacity=".72"/>
+      <circle cx="16" cy="16" r="12.4" stroke="#f2b552" stroke-dasharray="2 6" opacity=".55"/>
+    </svg>
+    <div class="brand-txt"><b id="brandName">寰宇</b><span id="brandSub">WORLD ATLAS</span></div>
+  </div>
+  <div id="searchWrap">
+    <span class="sicon"></span>
+    <input id="searchBox" type="search" autocomplete="off" spellcheck="false" placeholder="搜索国家 / 地区…">
+    <div id="sres" class="glass hide"></div>
+  </div>
+  <div class="hdr-sp"></div>
+  <button class="hbtn hide" id="hbInstall">⬇</button>
+  <button class="hbtn on" id="hbGlobe" title="地球仪"></button>
+  <button class="hbtn" id="hbMap" title="平面图"></button>
+  <button class="hbtn lang-tog" id="hbLang"><i id="lz" class="on">中</i>/<i id="le">EN</i></button>
+  <button class="hbtn" id="hbFull" title="全屏"></button>
+</header>
+
+<div id="tip" class="glass"></div>
+
+<aside id="panel" class="glass">
+  <div class="pn-grab"></div>
+  <div class="pn-head" id="pnHead">
+    <button class="pn-close" id="pnClose"></button>
+    <div class="pn-title">
+      <div class="pn-flag" id="pnFlag">🏳</div>
+      <div class="pn-names"><h2 id="pnName">—</h2><p id="pnAlt"></p></div>
+    </div>
+    <div class="pn-chips" id="pnChips"></div>
+  </div>
+  <div class="pn-tabs" id="pnTabs"></div>
+  <div class="pn-body" id="pnBody"></div>
+</aside>
+
+<div id="tools">
+  <button class="tbtn glass" id="tZoomIn"></button>
+  <button class="tbtn glass" id="tZoomOut"></button>
+  <button class="tbtn glass" id="tSpin"></button>
+  <button class="tbtn glass" id="tReset"></button>
+</div>
+
+<div id="readout" class="glass cut">
+  <div><b id="roCoord">—</b></div>
+  <div><span id="roUTC">—</span> · <span id="roZoom">—</span></div>
+  <div class="ver">BUILD <span id="roVer">—</span></div>
+</div>
+
+<div id="boot">
+  <svg class="boot-ring" viewBox="0 0 48 48">
+    <circle cx="24" cy="24" r="20" stroke="rgba(70,224,184,.16)"/>
+    <circle cx="24" cy="24" r="20" stroke="#46e0b8" stroke-linecap="round"
+            stroke-dasharray="30 96" style="transform-origin:center;animation:bootSpin 1.15s linear infinite"/>
+    <circle cx="24" cy="24" r="9" stroke="rgba(242,181,82,.5)" stroke-dasharray="3 5"
+            style="transform-origin:center;animation:bootSpin 3.2s linear infinite reverse"/>
+  </svg>
+  <div class="boot-t" id="bootTxt">系统初始化</div>
+  <div class="boot-b"><i id="bootBar"></i></div>
+</div>
+
+<script>/*__DATA__*/</script>
+<script>/*__JS__*/</script>
+</body>
+</html>
