@@ -5,6 +5,7 @@ const $ = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 const el = (tag, cls, txt) => { const n = document.createElement(tag); if (cls) n.className = cls; if (txt != null) n.textContent = txt; return n; };
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const smoothstep = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
 const easeIO = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
@@ -62,7 +63,7 @@ const I18N = {
     bootLabel: '生成地名图集', bootReady: '就绪',
     overview: '概览', geography: '地理', people: '人口', economy: '经济', politics: '政治',
     military: '军事', culture: '文化', envtech: '环境科技', sources: '来源',
-    kPop: '人口', kArea: '面积', kDens: '人口密度', kCapital: '首都', kRegion: '地区',
+    kPop: '人口', kArea: '面积', kDens: '人口密度', kCapital: '首都', kRegion: '地区', capital: '首都',
     kSubregion: '次区域', kOfficial: '官方全称', kCurrency: '货币', kLanguage: '语言',
     kCode: '国家代码', kPhone: '国际区号', kTld: '顶级域名', kNeighbors: '陆上邻国',
     kCoords: '地理坐标', kCoast: '海岸线', kElevMax: '最高点', kElevMin: '最低点',
@@ -110,7 +111,7 @@ const I18N = {
     bootGL: 'Starting renderer', bootLabel: 'Rendering place names', bootReady: 'Ready',
     overview: 'Overview', geography: 'Geography', people: 'People', economy: 'Economy', politics: 'Politics',
     military: 'Military', culture: 'Culture', envtech: 'Environment', sources: 'Sources',
-    kPop: 'Population', kArea: 'Area', kDens: 'Density', kCapital: 'Capital', kRegion: 'Region',
+    kPop: 'Population', kArea: 'Area', kDens: 'Density', kCapital: 'Capital', kRegion: 'Region', capital: 'Capital',
     kSubregion: 'Subregion', kOfficial: 'Official name', kCurrency: 'Currency', kLanguage: 'Languages',
     kCode: 'Codes', kPhone: 'Calling code', kTld: 'Internet TLD', kNeighbors: 'Land borders',
     kCoords: 'Coordinates', kCoast: 'Coastline', kElevMax: 'Highest point', kElevMin: 'Lowest point',

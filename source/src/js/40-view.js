@@ -88,6 +88,7 @@ class View {
     this.pCloud = program(gl, VS_MESH, FS_CLOUD, 'cloud');
     this.pAurora = program(gl, VS_MESH, FS_AURORA, 'aurora');
     this.pPick = program(gl, VS_MESH, FS_PICK, 'pick');
+    this.pPickBg = program(gl, VS_MESH, FS_PICK_BG, 'pickbg');
     this.pLine = program(gl, VS_LINE, FS_LINE, 'line');
     this.pLabel = program(gl, VS_LABEL, FS_LABEL, 'label');
     this.pAtmo = program(gl, VS_ATMO, FS_ATMO, 'atmo');
@@ -161,7 +162,8 @@ class View {
     const inst = buildLabelInstances(this.countries, this.mesh.meta, atlas);
     if (!this.atlasTex) {
       this.atlasTex = gl.createTexture();
-      this.lbBuf = { ll: gl.createBuffer(), uv: gl.createBuffer(), info: gl.createBuffer(), tier: gl.createBuffer() };
+      this.lbBuf = { ll: gl.createBuffer(), uv: gl.createBuffer(), info: gl.createBuffer(),
+        tier: gl.createBuffer(), show: gl.createBuffer() };
     }
     gl.bindTexture(gl.TEXTURE_2D, this.atlasTex);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
@@ -171,11 +173,77 @@ class View {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    const upd = (buf, arr) => { gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, arr, gl.STATIC_DRAW); };
+    const upd = (buf, arr, dyn) => { gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, arr, dyn ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW); };
     upd(this.lbBuf.ll, inst.ll); upd(this.lbBuf.uv, inst.uv); upd(this.lbBuf.info, inst.info);
     upd(this.lbBuf.tier, inst.tier);
+    this.labelShow = new Float32Array(inst.count).fill(1);
+    upd(this.lbBuf.show, this.labelShow, true);
     this.labelCount = inst.count;
+    this.labelSlotOfMeta = inst.slotOfMeta;
+    this.labelNCountry = inst.nCountry;
+    this.labelInfoArr = inst.info;
+    this._occT = 0; this._occKey = '';
     this.dirty = true;
+  }
+
+  // Greedy screen-space collision avoidance for country labels, recomputed
+  // only when the camera has moved meaningfully (cheap: <=237 candidates).
+  // Bigger countries, the selected country and the hovered country always
+  // win; smaller overlapping neighbours are suppressed rather than left to
+  // pile up into unreadable clumps (Balkans, the Gulf, Central America...).
+  updateLabelOcclusion(now) {
+    if (!this.labelSlotOfMeta || now - this._occT < 160) return;
+    const key = `${this.cam.lon.toFixed(1)}|${this.cam.lat.toFixed(1)}|${this.cam.dist.toFixed(3)}|${this.cam.morph.toFixed(2)}|${this.sel}|${this.hover}|${this.W}x${this.H}`;
+    if (key === this._occKey) return;
+    this._occT = now; this._occKey = key;
+
+    const M = this._M || this.matrices();
+    const W = this.canvas.clientWidth, H = this.canvas.clientHeight;
+    const morph = easeIO(clamp(this.cam.morph, 0, 1));
+    const minArea = Math.max(120, 26000 * this.cam.dist * this.cam.dist * (1 + 0.9 * morph));
+    const pxPerUnit = LABEL_PX * this.worldPerPixel();
+    const meta = this.mesh.meta;
+    const cands = [];
+    for (let mi = 0; mi < meta.length; mi++) {
+      const slot = this.labelSlotOfMeta[mi];
+      if (slot < 0) continue;
+      const m = meta[mi];
+      const scale = this.labelInfoArr[slot * 4];
+      const aspect = this.labelInfoArr[slot * 4 + 3];
+      if (m.area < minArea * 0.6) continue;
+      const sp = v3.fromLL(m.lon, m.lat);
+      const pe = equalEarth(m.lon, m.lat);
+      let d = Math.abs(((m.lon - this.cam.lon + 540) % 360) - 180) / 180;
+      const t = smoothstep(clamp(morph * 1.42 - d * 0.42, 0, 1));
+      const p = [lerp(sp[0], pe[0] * PLANE_SCALE, t), lerp(sp[1], pe[1] * PLANE_SCALE, t), lerp(sp[2], 0, t)];
+      if (morph < 0.5) {
+        const dot = sp[0] * M.eye[0] + sp[1] * M.eye[1] + sp[2] * M.eye[2];
+        const eyeLen = Math.hypot(M.eye[0], M.eye[1], M.eye[2]) || 1;
+        if (dot / eyeLen < 0.30) continue;
+      }
+      const cp = M4.mulVec(M.vp, [p[0], p[1], p[2], 1]);
+      if (cp[3] <= 0) continue;
+      const x = (cp[0] / cp[3] * 0.5 + 0.5) * W, y = (0.5 - cp[1] / cp[3] * 0.5) * H;
+      if (x < -40 || y < -40 || x > W + 40 || y > H + 40) continue;
+      const hh = pxPerUnit * scale, ww = hh * aspect;
+      const pri = (mi === this.sel ? 2e12 : mi === this.hover ? 1e12 : 0) + m.area;
+      cands.push({ mi, slot, x, y, w: ww, h: hh, pri });
+    }
+    cands.sort((a, b) => b.pri - a.pri);
+    const placed = [];
+    const show = this.labelShow;
+    show.fill(0);
+    for (const c of cands) {
+      const l = c.x - c.w / 2, r = c.x + c.w / 2, t2 = c.y - c.h / 2, b = c.y + c.h / 2;
+      let hit = false;
+      for (const p of placed) {
+        if (l < p.r && r > p.l && t2 < p.b && b > p.t) { hit = true; break; }
+      }
+      if (!hit) { placed.push({ l, r, t: t2, b }); show[c.slot] = 1; }
+    }
+    const gl = this.gl;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.lbBuf.show);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, show, 0, this.labelNCountry);
   }
 
   setTheme(scaleFn) {
@@ -454,7 +522,11 @@ class View {
     gl.clearColor(0, 0, 0, 1);
     gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.disable(gl.BLEND);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    this.drawMesh(this.pPick, this.matrices(), 0.0016, true);
+    const M = this.matrices();
+    // occlude with the ocean shell first: without this, clicking empty ocean
+    // on the near side can "see through" the globe and pick a country on the far side
+    this.drawMesh(this.pPickBg, M, 0, false);
+    this.drawMesh(this.pPick, M, 0.0016, true);
     gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.pickBuf);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     const id = this.pickBuf[0] + (this.pickBuf[1] << 8) - 1;
@@ -597,6 +669,7 @@ class View {
     if (!this.fx.labels || !this.labelCount) return;
     const gl = this.gl, p = this.pLabel;
     this.setCommon(p, M);
+    gl.uniform1f(p.u.uHover, this.hover);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.atlasTex);
     gl.uniform1i(p.u.uAtlas, 0);
@@ -609,6 +682,12 @@ class View {
       ? clamp((1.05 - this.cam.dist) / 0.55, 0, 1)
       : clamp((3.0 - this.cam.dist) / 1.0, 0, 1);
     gl.uniform1f(p.u.uCityFade, this.fx.cities === false ? 0 : cityFade);
+    // city text scales with the camera like real map geometry (Google-Maps
+    // style zoom growth), unlike country labels which hold a steady legible
+    // screen size; the reference distance differs per mode since globe and
+    // map dist ranges aren't comparable
+    const refDist = this.cam.morph > 0.5 ? 0.65 : 2.0;
+    gl.uniform1f(p.u.uCityZoom, clamp(refDist / Math.max(this.cam.dist, 0.05), 0.6, 3.2));
     gl.bindBuffer(gl.ARRAY_BUFFER, this.bQuad01);
     gl.enableVertexAttribArray(p.a.aCorner);
     gl.vertexAttribPointer(p.a.aCorner, 2, gl.FLOAT, false, 0, 0);
@@ -623,6 +702,7 @@ class View {
     bind(p.a.aUV, this.lbBuf.uv, 4);
     bind(p.a.aInfo, this.lbBuf.info, 4);
     bind(p.a.aTier, this.lbBuf.tier, 1);
+    bind(p.a.aShow, this.lbBuf.show, 1);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.labelCount);
     gl.vertexAttribDivisor(p.a.aLL, 0); gl.vertexAttribDivisor(p.a.aUV, 0); gl.vertexAttribDivisor(p.a.aInfo, 0);
   }
@@ -648,6 +728,7 @@ class View {
     const M = this.matrices();
     this._M = M;
     const morph = easeIO(clamp(this.cam.morph, 0, 1));
+    if (this.fx.labels) this.updateLabelOcclusion(now);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboScene.fb);
     gl.viewport(0, 0, this.W, this.H);
@@ -847,7 +928,7 @@ class View {
       this.vel.lon *= 0.94; this.vel.lat *= 0.94;
       moving = true;
     }
-    if (this.spin && now > this.spinIdle && !this.anim && c.morph < 0.02) {
+    if (this.spin && this.sel < 0 && now > this.spinIdle && !this.anim && c.morph < 0.02) {
       c.lon = ((c.lon + 0.035 + 540) % 360) - 180;
       moving = true;
     }

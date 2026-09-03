@@ -130,7 +130,17 @@ for (const t of geo.topo) {
   if (CULTURE[key]) rec.cul = CULTURE[key];
   if (NUKE_NOTE[key]) rec.nuke = NUKE_NOTE[key];
   if (CITIES[key]) {
-    rec.cities = CITIES[key].slice(0, 3).map(([zh, en, pop, lat, lon]) => ({ zh, en, pop, lat, lon }));
+    const capNorm = norm(rec.cap.en);
+    rec.cities = CITIES[key].slice(0, 3).map(([zh, en, pop, lat, lon]) => ({
+      zh, en, pop, lat, lon, isCap: !!capNorm && norm(en) === capNorm,
+    }));
+    // curated lists sometimes omit the capital outright (e.g. it isn't the
+    // country's largest city) — surface it as a 4th entry rather than silently
+    // mismark the largest city as the seat of government
+    if (capNorm && !rec.cities.some((c) => c.isCap) && rec.cap.en) {
+      rec.cities.push({ zh: rec.cap.zh || rec.cap.en, en: rec.cap.en, pop: null,
+        lat: c?.latlng?.[0] ?? null, lon: c?.latlng?.[1] ?? null, isCap: true, approx: true });
+    }
   }
 
   if (key === 'CHN') {

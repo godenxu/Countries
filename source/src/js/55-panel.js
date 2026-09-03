@@ -176,9 +176,12 @@ function renderDossier(body, i, tab, onPick, onCity) {
     if (c.cities && c.cities.length) {
       const sc = UI.sect(body, T('sectCities'));
       const box = el('div', 'cities');
-      for (const city of c.cities) {
-        const row = el('div', 'cityrow');
+      const ordered = c.cities.slice().sort((a, b) => (b.isCap ? 1 : 0) - (a.isCap ? 1 : 0));
+      for (const city of ordered) {
+        const row = el('div', 'cityrow' + (city.isCap ? ' cap' : ''));
+        if (city.isCap) row.appendChild(el('span', 'capstar', '★'));
         row.appendChild(el('span', 'cn', zh ? city.zh : city.en));
+        if (city.isCap) row.appendChild(el('span', 'capbadge', T('capital')));
         row.appendChild(el('span', 'ce', zh ? city.en : city.zh));
         row.appendChild(el('span', 'cp', city.pop ? fmtBig(city.pop).v + fmtBig(city.pop).u : ''));
         row.onclick = () => onCity && onCity(city.lat, city.lon, zh ? city.zh : city.en);

@@ -26,7 +26,9 @@ function buildLabelAtlas(countries, meta, lang) {
   };
 
   const rects = new Array(countries.length);
-  g.font = `600 ${ATLAS_FONT}px ${LABEL_FONT_STACK}`;
+  // medium (not bold) weight: bold glyphs run wider and clump together once
+  // several small, close countries are on screen at once (Balkans, Gulf...)
+  g.font = `500 ${ATLAS_FONT}px ${LABEL_FONT_STACK}`;
   let x = 4, y = 4;
   for (let i = 0; i < countries.length; i++) {
     const name = lang === 'zh' ? countries[i].zh : countries[i].en;
@@ -59,16 +61,33 @@ function buildLabelAtlas(countries, meta, lang) {
     if (x + w > ATLAS_W - 4) { x = 4; y += CITY_ROW; }
     if (y + CITY_ROW > ATLAS_H) break;
     const cy = y + CITY_ROW / 2;
-    g.fillStyle = 'rgba(4,13,18,0.72)';
+    // capitals get a gold star-diamond marker + brighter pill; regular
+    // cities keep a plain teal dot, so the seat of government reads at a glance
+    g.fillStyle = c.isCap ? 'rgba(23,17,4,0.80)' : 'rgba(4,13,18,0.72)';
     g.beginPath();
     if (g.roundRect) g.roundRect(x, y + 3, w, CITY_ROW - 6, (CITY_ROW - 6) / 2);
     else g.rect(x, y + 3, w, CITY_ROW - 6);
     g.fill();
-    g.fillStyle = '#5fe0c4';
-    g.beginPath(); g.arc(x + PAD + DOT / 2, cy, DOT / 2, 0, Math.PI * 2); g.fill();
+    if (c.isCap) {
+      g.strokeStyle = 'rgba(242,181,82,0.55)'; g.lineWidth = 1.4;
+      if (g.roundRect) { g.beginPath(); g.roundRect(x + 0.7, y + 3.7, w - 1.4, CITY_ROW - 7.4, (CITY_ROW - 7.4) / 2); g.stroke(); }
+      const cx = x + PAD + DOT / 2, r = DOT * 0.62;
+      g.fillStyle = '#ffcf6e';
+      g.beginPath();
+      for (let k = 0; k < 4; k++) {
+        const a0 = (k / 4) * Math.PI * 2 - Math.PI / 4;
+        const rr = k % 2 === 0 ? r : r * 0.42;
+        const px = cx + Math.cos(a0) * rr, py = cy + Math.sin(a0) * rr;
+        if (k === 0) g.moveTo(px, py); else g.lineTo(px, py);
+      }
+      g.closePath(); g.fill();
+    } else {
+      g.fillStyle = '#5fe0c4';
+      g.beginPath(); g.arc(x + PAD + DOT / 2, cy, DOT / 2, 0, Math.PI * 2); g.fill();
+    }
     g.strokeStyle = 'rgba(3,11,15,0.96)'; g.lineWidth = 3.2;
     g.strokeText(name, x + PAD + DOT + 5, cy);
-    g.fillStyle = '#eafff8';
+    g.fillStyle = c.isCap ? '#fff6e0' : '#eafff8';
     g.fillText(name, x + PAD + DOT + 5, cy);
     cityRects.push({ rect: [x / ATLAS_W, y / ATLAS_H, w / ATLAS_W, CITY_ROW / ATLAS_H, w / CITY_ROW], c });
     x += w + 6;
@@ -94,8 +113,11 @@ function buildLabelInstances(countries, meta, atlas) {
     if (!m.area) continue;
     ll[count * 2] = m.lon; ll[count * 2 + 1] = m.lat;
     uv[count * 4] = r[0]; uv[count * 4 + 1] = r[1]; uv[count * 4 + 2] = r[2]; uv[count * 4 + 3] = r[3];
-    // bigger states carry slightly bigger type, as on a printed map
-    const s = clamp(0.78 + Math.log10(Math.max(1e4, m.area)) * 0.115, 0.78, 1.45);
+    // bigger states carry noticeably bigger type, as on a printed map — a
+    // wide range so Russia and San Marino are never mistaken for peers, and
+    // so small, tightly-packed countries (Balkans, the Gulf) take up less
+    // room and collide with their neighbours' labels less often
+    const s = clamp(0.30 * Math.log10(Math.max(2e3, m.area)) - 0.55, 0.48, 1.75);
     info[count * 4] = s; info[count * 4 + 1] = m.area; info[count * 4 + 2] = i; info[count * 4 + 3] = r[4];
     tier[count] = 0;
     count++;
@@ -105,9 +127,14 @@ function buildLabelInstances(countries, meta, atlas) {
   for (const { rect: r, c } of atlas.cityRects) {
     ll[count * 2] = c.lon; ll[count * 2 + 1] = c.lat;
     uv[count * 4] = r[0]; uv[count * 4 + 1] = r[1]; uv[count * 4 + 2] = r[2]; uv[count * 4 + 3] = r[3];
-    info[count * 4] = 0.95; info[count * 4 + 1] = 900; info[count * 4 + 2] = 10000 + c.ci; info[count * 4 + 3] = r[4];
+    info[count * 4] = c.isCap ? 1.15 : 0.95; info[count * 4 + 1] = 900;
+    info[count * 4 + 2] = 10000 + c.ci; info[count * 4 + 3] = r[4];
     tier[count] = 1;
     count++;
   }
-  return { ll, uv, info, tier, count };
+  // meta-index (country) -> its slot in these buffers, for the CPU-side
+  // per-frame collision pass to write into the right place
+  const slotOfMeta = new Int32Array(meta.length).fill(-1);
+  order.forEach((mi, slot) => { if (atlas.rects[mi] && meta[mi].area) slotOfMeta[mi] = slot; });
+  return { ll, uv, info, tier, count, nCountry: order.filter((mi) => atlas.rects[mi] && meta[mi].area).length, slotOfMeta };
 }

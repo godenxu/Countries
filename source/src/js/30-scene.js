@@ -105,17 +105,21 @@ void main(){
   vec3 n = normalize(vN);
   float ndl = dot(n, uSun);
   float day = smoothstep(-0.16, 0.20, ndl);
+  // a thematic choropleth is data, not terrain: keep it flatter and calmer
+  // than the natural palette so 200-odd polygons read as a legible gradient
+  // instead of a lit-up patchwork of bright blocks
+  float themed = smoothstep(0.4, 0.6, uPalMix);
   float g = vn2(vLL*min(uNight*0.35, 2.2))*0.6 + vn2(vLL*min(uNight*0.9, 6.0))*0.4;
-  vec3 c = base * (0.965 + g*0.07);
+  vec3 c = base * (0.965 + g*0.07*(1.0-themed));
   // terminator warmth on the lit side of the boundary
   float dusk = exp(-abs(ndl)*9.0) * (1.0-uMorph*0.25);
-  c = mix(c, c*vec3(1.35, 0.92, 0.62), dusk*0.55);
-  vec3 nightC = base*0.30 + vec3(0.024, 0.038, 0.062);
+  c = mix(c, c*vec3(1.35, 0.92, 0.62), dusk*0.55*(1.0-0.7*themed));
+  vec3 nightC = mix(base*0.55 + vec3(0.010, 0.016, 0.026), base*0.30 + vec3(0.024, 0.038, 0.062), 1.0-themed);
   // settlement glow, weighted by the country's population density
   float ns = vn2(vLL*uNight*0.45)*0.62 + vn2(vLL*uNight*1.35 + 11.7)*0.38;
-  float lampMask = smoothstep(0.88 - 0.34*dens, 1.0, ns);
+  float lampMask = smoothstep(0.88 - 0.34*dens, 1.0, ns) * (1.0-themed);
   float lamp = lampMask * (1.0 - day);
-  c = mix(nightC, c*1.05, day);
+  c = mix(nightC, c*mix(1.05, 0.98, themed), day);
   c += vec3(1.0, 0.72, 0.38) * lamp * 0.85 * (0.86 + 0.14*sin(uTime*1.8 + ns*30.0));
   // scanning sweep
   float sweepLon = mod(vLL.x - uSweep + 540.0, 360.0) - 180.0;
@@ -258,7 +262,8 @@ in vec2 aLL;
 in vec4 aUV;        // x,y,w,h in atlas space
 in vec4 aInfo;      // scale, area, cid, pixel aspect
 in float aTier;     // 0 = country, 1 = city
-uniform float uPix, uMinArea, uSel, uSelLift, uFade, uCityFade;
+in float aShow;     // CPU-side collision pass: 1 = keep, 0 = suppress (countries only)
+uniform float uPix, uMinArea, uSel, uHover, uSelLift, uFade, uCityFade, uCityZoom;
 out vec2 vUV;
 out float vAlpha;
 out float vSel;
@@ -273,7 +278,11 @@ void main(){
   float hostIdx = mix(aInfo.z, aInfo.z - 10000.0, aTier);
   float lift = (abs(hostIdx - uSel) < 0.5) ? uSelLift : 0.0;
   vec3 anchor = morphPos(aLL, 0.009 + lift + aTier*0.0035, n);
-  float h = uPix * aInfo.x;
+  // cities grow/shrink with the camera like ordinary map geometry (so
+  // zooming in visibly enlarges them); country labels stay a steady,
+  // always-legible screen size the way atlas typography conventionally does
+  float sizeMul = mix(1.0, uCityZoom, aTier);
+  float h = uPix * aInfo.x * sizeMul;
   float w = h * aInfo.w;
   vec2 c = aCorner - 0.5;
   vec3 p = anchor + east*(c.x*w) + north*(-c.y*h);
@@ -285,7 +294,12 @@ void main(){
     facing = smoothstep(0.20, 0.44, d);
   }
   float zoomIn = smoothstep(uMinArea*0.6, uMinArea*1.8, aInfo.y);
-  vAlpha = facing * mix(zoomIn, uCityFade, aTier) * uFade;
+  // cities only clutter the view once a specific country is the focus: only
+  // the selected (or hovered) country's cities are eligible to show, so
+  // zooming into a multi-country region without picking one stays clean
+  float cityRelevant = max(step(abs(hostIdx-uSel), 0.5), step(abs(hostIdx-uHover), 0.5));
+  float show = mix(aShow, cityRelevant, aTier);
+  vAlpha = facing * mix(zoomIn, uCityFade, aTier) * uFade * show;
   vSel = (abs(aInfo.z - uSel) < 0.5) ? 1.0 : 0.0;
   vTier = aTier;
 }`;
@@ -398,6 +412,14 @@ void main(){
   o = vec4(float(id & 255)/255.0, float((id >> 8) & 255)/255.0, 0.0, 1.0);
 }`;
 
+// occludes the pick pass with a "nothing here" (id=0 -> decodes to -1) write,
+// at the same elevation as the visible ocean shell, so land on the far side
+// of the globe can never win the depth test against empty near-side ocean
+const FS_PICK_BG = `#version 300 es
+precision highp float;
+out vec4 o;
+void main(){ o = vec4(0.0, 0.0, 0.0, 1.0); }`;
+
 const FS_BRIGHT = `#version 300 es
 precision highp float;
 uniform sampler2D uTex; uniform float uThresh;
@@ -481,9 +503,12 @@ function buildPalette(meta, countries) {
 }
 
 /* sequential ramp for the thematic layer: deep teal -> aurora -> gold -> coral */
+// A muted, low-chroma sequential ramp — deliberately far short of fully
+// saturated so 200-odd adjacent polygons read as one calm gradient rather
+// than a lit-up patchwork. Slate -> teal -> sage -> muted gold -> terracotta.
 const RAMP = [
-  [0.055, 0.145, 0.200], [0.075, 0.310, 0.330], [0.114, 0.510, 0.451],
-  [0.275, 0.780, 0.596], [0.784, 0.816, 0.400], [0.949, 0.663, 0.278], [0.980, 0.404, 0.322],
+  [0.075, 0.098, 0.130], [0.098, 0.180, 0.196], [0.129, 0.267, 0.259],
+  [0.278, 0.373, 0.263], [0.478, 0.427, 0.263], [0.541, 0.345, 0.263],
 ];
 function rampColor(t) {
   t = clamp(t, 0, 1) * (RAMP.length - 1);
@@ -497,8 +522,16 @@ function buildThemePalette(meta, countries, key, scaleFn) {
     const rec = countries[i];
     const v = key && rec ? scaleFn(rec) : null;
     let col;
-    if (v == null) col = [0.098, 0.129, 0.153];
-    else col = rampColor(v);
+    if (v == null) col = [0.078, 0.086, 0.098];
+    else {
+      col = rampColor(v);
+      // deterministic per-country jitter, same trick as the natural palette,
+      // so same-bucket neighbours don't fuse into one flat coloured blob
+      let h = 0; const k = meta[i].key;
+      for (let c = 0; c < k.length; c++) h = (h * 31 + k.charCodeAt(c)) & 0xffff;
+      const j = ((h % 100) / 100 - 0.5) * 0.10;
+      col = [col[0] * (1 + j), col[1] * (1 + j), col[2] * (1 + j)];
+    }
     px[i * 4 + 0] = clamp(col[0] * 255, 0, 255);
     px[i * 4 + 1] = clamp(col[1] * 255, 0, 255);
     px[i * 4 + 2] = clamp(col[2] * 255, 0, 255);

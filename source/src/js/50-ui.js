@@ -269,7 +269,9 @@ class UIShell {
     // always land on a clean, fully-framed view for the new viewport shape —
     // never leave the user on a stale pan/zoom from the previous mode
     if (this.selId >= 0) setTimeout(() => this.flyToCountry(this.selId), 60);
-    else setTimeout(() => v.flyTo(v.cam.lon, m ? 6 : 22, v.fitDist(), 900), 60);
+    // lat 0 is the Equal Earth projection's true vertical centre — anything
+    // else visibly off-centres the "whole world" framing on the map
+    else setTimeout(() => v.flyTo(v.cam.lon, m ? 0 : 22, v.fitDist(), 900), 60);
     $('#hbGlobe').classList.toggle('on', !m);
     $('#hbMap').classList.toggle('on', !!m);
   }
