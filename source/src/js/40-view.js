@@ -67,6 +67,8 @@ class View {
     this.selLift = 0;        // selected country rises off the surface
     this.palMix = 0;         // region palette -> theme palette
     this.palMixTo = 0;
+    this.markFocus = 0;      // 0 = marks are a subtle overlay, 1 = "custom" view mode
+    this.markFocusTo = 0;
     this.flash = 0;
     this.ripples = [];
     this.arcs = null;
@@ -265,6 +267,13 @@ class View {
     gl.bindTexture(gl.TEXTURE_2D, this.palTexB);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
     this.palMixTo = scaleFn ? 1 : 0;
+    this.dirty = true;
+  }
+
+  // "custom" view mode: marks read as a bold spotlight (unmarked countries
+  // fade to neutral) instead of the subtle always-on overlay
+  setMarkFocus(on) {
+    this.markFocusTo = on ? 1 : 0;
     this.dirty = true;
   }
 
@@ -765,6 +774,7 @@ class View {
     gl.uniform1i(this.pLand.u.uPalB, 1);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.markTex);
     gl.uniform1i(this.pLand.u.uMark, 2);
+    gl.uniform1f(this.pLand.u.uMarkFocus, this.markFocus);
     gl.uniform1f(this.pLand.u.uPalMix, this.palMix);
     gl.uniform1f(this.pLand.u.uHover, this.hover);
     this.drawMesh(this.pLand, M, 0.0016, true);
@@ -913,6 +923,7 @@ class View {
     const wantLift = this.sel >= 0 ? 0.022 : 0;
     if (Math.abs(this.selLift - wantLift) > 0.0002) { this.selLift = lerp(this.selLift, wantLift, 0.12); moving = true; }
     if (Math.abs(this.palMix - this.palMixTo) > 0.002) { this.palMix = lerp(this.palMix, this.palMixTo, 0.09); moving = true; }
+    if (Math.abs(this.markFocus - this.markFocusTo) > 0.002) { this.markFocus = lerp(this.markFocus, this.markFocusTo, 0.09); moving = true; }
     if (this.shiftAnim) {
       const a = this.shiftAnim;
       const t = clamp((now - a.t0) / a.ms, 0, 1), e = easeIO(t);

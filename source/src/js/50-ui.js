@@ -88,6 +88,9 @@ class UIShell {
     const none = el('button', 'tchip on', '');
     none.dataset.k = '';
     bar.appendChild(none);
+    const custom = el('button', 'tchip');
+    custom.dataset.k = '__custom__';
+    bar.appendChild(custom);
     for (const k of THEMES) {
       const m = metaOf(k);
       if (!m) continue;
@@ -189,12 +192,15 @@ class UIShell {
     $('#rkClose').onclick = () => this.toggleRank(false);
     $('#mkClose').onclick = () => this.toggleMarks(false);
     $('#mkAdd').onclick = () => this.addMarkGroup();
+    $('#mkPickDone').onclick = () => { this.stopMarkPick(); this.toggleMarks(true); };
     $('#mkList').addEventListener('input', (e) => {
       const row = e.target.closest('.mkrow'); if (!row) return;
       const grp = this.markGroups.find((g) => g.id === row.dataset.id); if (!grp) return;
       if (e.target.classList.contains('mkswatch')) { grp.color = e.target.value; this.view.rebuildMarks(this.markGroups); }
       if (e.target.classList.contains('mkname')) grp.name = e.target.value;
       this.saveMarks();
+      if (this.markPickId === grp.id) this.syncMarkPickBar();
+      if (this.theme === '__custom__') this.renderLegend();
     });
     $('#mkList').addEventListener('click', (e) => {
       const row = e.target.closest('.mkrow'); if (!row) return;
@@ -227,6 +233,7 @@ class UIShell {
     syncTabFade();
     $('#themeBar').onclick = (e) => {
       const b = e.target.closest('.tchip'); if (!b) return;
+      if (b.dataset.k === '__custom__') { this.setCustomTheme(); return; }
       this.setTheme(b.dataset.k || null);
     };
     // mobile bottom-sheet: dragging the header (or its grab handle) freely
@@ -389,6 +396,7 @@ class UIShell {
     $('#le').classList.toggle('on', LANG === 'en');
     $$('.ptab').forEach((b) => { b.textContent = T(b.dataset.tab); });
     $$('.tchip').forEach((b) => {
+      if (b.dataset.k === '__custom__') { b.textContent = T('themeCustom'); return; }
       const m = b.dataset.k ? metaOf(b.dataset.k) : null;
       b.textContent = m ? labelOf(m) : T('themeNone');
     });
@@ -397,6 +405,7 @@ class UIShell {
     $('#setTitle').textContent = T('settings');
     $('#mkTitle').textContent = T('markTitle');
     $('#mkAddTxt').textContent = T('markAddGroup');
+    $('#mkPickDone').textContent = T('markDone');
     this.buildSettings();
     this.renderLegend();
     if (this.selId >= 0) this.renderPanel(this.selId);
@@ -416,6 +425,19 @@ class UIShell {
     this.theme = key || null;
     $$('.tchip').forEach((b) => b.classList.toggle('on', (b.dataset.k || null) === this.theme));
     this.view.setTheme(this.theme ? themeScale(this.theme) : null);
+    this.view.setMarkFocus(false);
+    this.renderLegend();
+    if ($('#rank').classList.contains('open')) this.renderRank();
+  }
+
+  // "自定义" chip: the base map stays natural (marks aren't a data metric),
+  // but the marks overlay switches from a subtle always-on tint to a bold
+  // spotlight -- see uMarkFocus in FS_LAND
+  setCustomTheme() {
+    this.theme = '__custom__';
+    $$('.tchip').forEach((b) => b.classList.toggle('on', b.dataset.k === '__custom__'));
+    this.view.setTheme(null);
+    this.view.setMarkFocus(true);
     this.renderLegend();
     if ($('#rank').classList.contains('open')) this.renderRank();
   }
@@ -435,6 +457,19 @@ class UIShell {
       box.appendChild(mk('rgba(150,242,224,.9)', T('coastline')));
       box.appendChild(mk('rgba(150,242,224,.45)', T('border')));
       box.appendChild(mk('rgba(242,181,82,.9)', T('ninedash'), true));
+      return;
+    }
+    if (this.theme === '__custom__') {
+      box.appendChild(el('div', 'lgtitle', T('markTitle')));
+      if (!this.markGroups.length) { box.appendChild(el('div', 'lgnote', T('markEmpty'))); return; }
+      for (const grp of this.markGroups) {
+        const row = el('div', 'k');
+        const dot = el('i', 'lgdot');
+        dot.style.background = grp.color; dot.style.borderColor = grp.color;
+        row.appendChild(dot);
+        row.appendChild(el('span', null, `${grp.name} · ${grp.keys.length}`));
+        box.appendChild(row);
+      }
       return;
     }
     const m = metaOf(this.theme), r = DATA.ranks[this.theme];
@@ -496,8 +531,11 @@ class UIShell {
     const n = $('#marks');
     const open = force != null ? force : !n.classList.contains('open');
     n.classList.toggle('open', open);
-    $('#tMarks').classList.toggle('on', open);
-    if (open) this.renderMarks(); else this.stopMarkPick();
+    // the toolbar button glows for either the manager panel being open or a
+    // pick actually in progress (the panel closes itself while picking, see
+    // startMarkPick, so without this the button would go dark mid-pick)
+    $('#tMarks').classList.toggle('on', open || this.markPickId != null);
+    if (open) this.renderMarks();
   }
 
   addMarkGroup() {
@@ -511,6 +549,7 @@ class UIShell {
     this.markGroups.push(grp);
     this.saveMarks();
     this.renderMarks();
+    if (this.theme === '__custom__') this.renderLegend();
     this.startMarkPick(grp.id);
   }
 
@@ -520,6 +559,8 @@ class UIShell {
     this.saveMarks();
     this.view.rebuildMarks(this.markGroups);
     this.renderMarks();
+    this.syncMarkPickBar();
+    if (this.theme === '__custom__') this.renderLegend();
   }
 
   toggleMarkCountry(groupId, idx) {
@@ -531,24 +572,44 @@ class UIShell {
     this.saveMarks();
     this.view.rebuildMarks(this.markGroups);
     this.renderMarks();
+    if (this.theme === '__custom__') this.renderLegend();
   }
 
   startMarkPick(id) {
     this.markPickId = id;
+    // the manager panel is a centred modal -- left open it would sit right
+    // on top of the globe and swallow every click meant for a country, so
+    // picking closes it and hands off to the small floating bar instead
+    $('#marks').classList.remove('open');
+    $('#tMarks').classList.add('on');
     this.renderMarks();
-    this.toast(T('markPickHint'));
+    this.syncMarkPickBar();
   }
   stopMarkPick() {
     if (this.markPickId == null) return;
     this.markPickId = null;
+    $('#tMarks').classList.toggle('on', $('#marks').classList.contains('open'));
     this.renderMarks();
+    this.syncMarkPickBar();
+  }
+  syncMarkPickBar() {
+    const grp = this.markGroups.find((g) => g.id === this.markPickId);
+    const bar = $('#mkPickBar');
+    bar.classList.toggle('on', !!grp);
+    if (grp) {
+      $('#mkPickDot').style.background = grp.color;
+      $('#mkPickDot').style.color = grp.color;
+      $('#mkPickName').textContent = grp.name;
+    }
   }
 
   renderMarks() {
     $('#mkSub').textContent = T('markSub');
     const list = $('#mkList');
-    const focused = document.activeElement && document.activeElement.closest && document.activeElement.closest('#mkList');
-    if (focused) return; // don't yank focus out from under an in-progress name edit
+    // don't yank a name input's value out from under an in-progress edit --
+    // that's the only element in here whose content isn't fully re-derived
+    // from state on every keystroke, so it's the only one worth guarding
+    if (document.activeElement && document.activeElement.classList.contains('mkname')) return;
     list.innerHTML = '';
     if (!this.markGroups.length) { list.appendChild(el('div', 'soon', T('markEmpty'))); return; }
     for (const grp of this.markGroups) {

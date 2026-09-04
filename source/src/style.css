@@ -231,6 +231,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   pointer-events: none; }
 #legend .k { display: flex; align-items: center; gap: 7px; }
 #legend i { width: 14px; height: 0; border-top-width: 1.5px; border-top-style: solid; display: block; flex: none; }
+#legend i.lgdot { width: 9px; height: 9px; border-radius: 50%; border: none; background: currentColor; }
 
 /* ---------- responsive: phone & folded ---------- */
 @media (max-width: 720px) {
@@ -319,6 +320,25 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   opacity: 0; pointer-events: none; transition: all .28s cubic-bezier(.2,.9,.3,1);
 }
 #toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---------- custom-mark pick-mode floating bar ---------- */
+/* stays out of the way of the globe centre so clicking countries while
+   picking never gets intercepted by a modal -- see #marks below */
+#mkPickBar {
+  position: absolute; left: 50%; top: calc(var(--hdr-h) + var(--sat) + 10px); z-index: 50;
+  display: flex; align-items: center; gap: 9px; padding: 7px 8px 7px 14px; border-radius: 12px;
+  opacity: 0; pointer-events: none; transform: translate(-50%, -12px);
+  transition: all .28s cubic-bezier(.2,.9,.3,1);
+}
+#mkPickBar.on { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+#mkPickBar .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: 0 0 8px currentColor; }
+#mkPickBar span#mkPickName { font-size: 12.5px; color: var(--ink); white-space: nowrap; max-width: 40vw;
+  overflow: hidden; text-overflow: ellipsis; }
+#mkPickBar button {
+  padding: 5px 12px; border-radius: 8px; font-size: 11.5px; white-space: nowrap;
+  background: rgba(242,181,82,.18); border: 1px solid rgba(242,181,82,.4); color: var(--gold);
+}
+#mkPickBar button:hover { background: rgba(242,181,82,.3); }
 
 /* ---------- ranking board ---------- */
 #rank {

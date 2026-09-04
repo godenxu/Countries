@@ -246,6 +246,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   pointer-events: none; }
 #legend .k { display: flex; align-items: center; gap: 7px; }
 #legend i { width: 14px; height: 0; border-top-width: 1.5px; border-top-style: solid; display: block; flex: none; }
+#legend i.lgdot { width: 9px; height: 9px; border-radius: 50%; border: none; background: currentColor; }
 
 /* ---------- responsive: phone & folded ---------- */
 @media (max-width: 720px) {
@@ -334,6 +335,25 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   opacity: 0; pointer-events: none; transition: all .28s cubic-bezier(.2,.9,.3,1);
 }
 #toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---------- custom-mark pick-mode floating bar ---------- */
+/* stays out of the way of the globe centre so clicking countries while
+   picking never gets intercepted by a modal -- see #marks below */
+#mkPickBar {
+  position: absolute; left: 50%; top: calc(var(--hdr-h) + var(--sat) + 10px); z-index: 50;
+  display: flex; align-items: center; gap: 9px; padding: 7px 8px 7px 14px; border-radius: 12px;
+  opacity: 0; pointer-events: none; transform: translate(-50%, -12px);
+  transition: all .28s cubic-bezier(.2,.9,.3,1);
+}
+#mkPickBar.on { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+#mkPickBar .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: 0 0 8px currentColor; }
+#mkPickBar span#mkPickName { font-size: 12.5px; color: var(--ink); white-space: nowrap; max-width: 40vw;
+  overflow: hidden; text-overflow: ellipsis; }
+#mkPickBar button {
+  padding: 5px 12px; border-radius: 8px; font-size: 11.5px; white-space: nowrap;
+  background: rgba(242,181,82,.18); border: 1px solid rgba(242,181,82,.4); color: var(--gold);
+}
+#mkPickBar button:hover { background: rgba(242,181,82,.3); }
 
 /* ---------- ranking board ---------- */
 #rank {
@@ -564,6 +584,11 @@ i.live { color: var(--aurora); font-size: 8px; margin-left: 5px; vertical-align:
 
 <div id="tip" class="glass"></div>
 <div id="toast"></div>
+<div id="mkPickBar" class="glass cut">
+  <span id="mkPickDot"></span>
+  <span id="mkPickName"></span>
+  <button id="mkPickDone"></button>
+</div>
 
 <aside id="rank" class="glass">
   <div class="rk-head">
@@ -705,6 +730,7 @@ const I18N = {
     markTitle: '自定义标记', markSub: '为国家自定义颜色标记，同时显示多套', markAddGroup: '新建标记组',
     markGroupDefault: '标记组 ', markPick: '选国家', markDone: '完成',
     markPickHint: '点击地图为该标记组添加或移除国家，再次点击"完成"结束', markEmpty: '还没有标记组，点击下方按钮新建一个',
+    themeCustom: '自定义',
     globe: '地球仪', map: '平面图', spin: '自转', reset: '复位', zoomIn: '放大', zoomOut: '缩小',
     fullscreen: '全屏', settings: '视觉设置', ranking: '排行榜', random: '随机漫游', favorite: '收藏',
     compare: '对比', lang: '语言',
@@ -758,6 +784,7 @@ const I18N = {
     markAddGroup: 'New mark group', markGroupDefault: 'Group ', markPick: 'Pick', markDone: 'Done',
     markPickHint: 'Click the map to add/remove countries for this group, click "Done" to finish',
     markEmpty: 'No mark groups yet — add one below',
+    themeCustom: 'Custom',
     globe: 'Globe', map: 'Map', spin: 'Spin', reset: 'Reset', zoomIn: 'Zoom in', zoomOut: 'Zoom out',
     fullscreen: 'Fullscreen', settings: 'Visual settings', ranking: 'Leaderboard', random: 'Surprise me',
     favorite: 'Favourite', compare: 'Compare', lang: 'Language',
@@ -1267,7 +1294,7 @@ void main(){
 const FS_LAND = `#version 300 es
 precision highp float;
 uniform sampler2D uPal, uPalB, uMark;
-uniform float uHover, uSel, uTime, uMorph, uPalMix, uSweep, uBuild, uNight;
+uniform float uHover, uSel, uTime, uMorph, uPalMix, uSweep, uBuild, uNight, uMarkFocus;
 uniform vec3 uSun, uEye;
 in vec3 vN; in vec2 vLL; in vec3 vWorld; flat in float vCid;
 out vec4 o;
@@ -1311,9 +1338,14 @@ void main(){
   c += vec3(0.20, 0.95, 0.80) * exp(-abs(sweepLon)*0.55) * 0.10;
   // user-defined marks (e.g. "which countries are in this org") overlay on
   // top of whatever palette is active, so they stay visible in both natural
-  // and thematic mode; selection/hover glow still layers on top of this
+  // and thematic mode; selection/hover glow still layers on top of this.
+  // "Custom" view mode (uMarkFocus) turns them into a bold spotlight: marked
+  // countries saturate further while everything unmarked fades to neutral,
+  // the same way switching to a data theme replaces the natural map's story
   vec4 mk = texelFetch(uMark, ivec2(int(vCid + 0.5), 0), 0);
-  c = mix(c, mk.rgb, mk.a * 0.55);
+  float hasMark = step(0.01, mk.a);
+  c = mix(c, mk.rgb, mk.a * mix(0.55, 0.88, uMarkFocus));
+  c = mix(c, vec3(0.10, 0.12, 0.15), (1.0 - hasMark) * uMarkFocus * 0.62);
   float sel = step(abs(vCid - uSel), 0.5);
   float hov = step(abs(vCid - uHover), 0.5) * (1.0 - sel);
   c = mix(c, vec3(0.30, 0.92, 0.78), hov*0.32);
@@ -2060,6 +2092,8 @@ class View {
     this.selLift = 0;        // selected country rises off the surface
     this.palMix = 0;         // region palette -> theme palette
     this.palMixTo = 0;
+    this.markFocus = 0;      // 0 = marks are a subtle overlay, 1 = "custom" view mode
+    this.markFocusTo = 0;
     this.flash = 0;
     this.ripples = [];
     this.arcs = null;
@@ -2258,6 +2292,13 @@ class View {
     gl.bindTexture(gl.TEXTURE_2D, this.palTexB);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
     this.palMixTo = scaleFn ? 1 : 0;
+    this.dirty = true;
+  }
+
+  // "custom" view mode: marks read as a bold spotlight (unmarked countries
+  // fade to neutral) instead of the subtle always-on overlay
+  setMarkFocus(on) {
+    this.markFocusTo = on ? 1 : 0;
     this.dirty = true;
   }
 
@@ -2758,6 +2799,7 @@ class View {
     gl.uniform1i(this.pLand.u.uPalB, 1);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.markTex);
     gl.uniform1i(this.pLand.u.uMark, 2);
+    gl.uniform1f(this.pLand.u.uMarkFocus, this.markFocus);
     gl.uniform1f(this.pLand.u.uPalMix, this.palMix);
     gl.uniform1f(this.pLand.u.uHover, this.hover);
     this.drawMesh(this.pLand, M, 0.0016, true);
@@ -2906,6 +2948,7 @@ class View {
     const wantLift = this.sel >= 0 ? 0.022 : 0;
     if (Math.abs(this.selLift - wantLift) > 0.0002) { this.selLift = lerp(this.selLift, wantLift, 0.12); moving = true; }
     if (Math.abs(this.palMix - this.palMixTo) > 0.002) { this.palMix = lerp(this.palMix, this.palMixTo, 0.09); moving = true; }
+    if (Math.abs(this.markFocus - this.markFocusTo) > 0.002) { this.markFocus = lerp(this.markFocus, this.markFocusTo, 0.09); moving = true; }
     if (this.shiftAnim) {
       const a = this.shiftAnim;
       const t = clamp((now - a.t0) / a.ms, 0, 1), e = easeIO(t);
@@ -3559,6 +3602,9 @@ class UIShell {
     const none = el('button', 'tchip on', '');
     none.dataset.k = '';
     bar.appendChild(none);
+    const custom = el('button', 'tchip');
+    custom.dataset.k = '__custom__';
+    bar.appendChild(custom);
     for (const k of THEMES) {
       const m = metaOf(k);
       if (!m) continue;
@@ -3660,12 +3706,15 @@ class UIShell {
     $('#rkClose').onclick = () => this.toggleRank(false);
     $('#mkClose').onclick = () => this.toggleMarks(false);
     $('#mkAdd').onclick = () => this.addMarkGroup();
+    $('#mkPickDone').onclick = () => { this.stopMarkPick(); this.toggleMarks(true); };
     $('#mkList').addEventListener('input', (e) => {
       const row = e.target.closest('.mkrow'); if (!row) return;
       const grp = this.markGroups.find((g) => g.id === row.dataset.id); if (!grp) return;
       if (e.target.classList.contains('mkswatch')) { grp.color = e.target.value; this.view.rebuildMarks(this.markGroups); }
       if (e.target.classList.contains('mkname')) grp.name = e.target.value;
       this.saveMarks();
+      if (this.markPickId === grp.id) this.syncMarkPickBar();
+      if (this.theme === '__custom__') this.renderLegend();
     });
     $('#mkList').addEventListener('click', (e) => {
       const row = e.target.closest('.mkrow'); if (!row) return;
@@ -3698,6 +3747,7 @@ class UIShell {
     syncTabFade();
     $('#themeBar').onclick = (e) => {
       const b = e.target.closest('.tchip'); if (!b) return;
+      if (b.dataset.k === '__custom__') { this.setCustomTheme(); return; }
       this.setTheme(b.dataset.k || null);
     };
     // mobile bottom-sheet: dragging the header (or its grab handle) freely
@@ -3860,6 +3910,7 @@ class UIShell {
     $('#le').classList.toggle('on', LANG === 'en');
     $$('.ptab').forEach((b) => { b.textContent = T(b.dataset.tab); });
     $$('.tchip').forEach((b) => {
+      if (b.dataset.k === '__custom__') { b.textContent = T('themeCustom'); return; }
       const m = b.dataset.k ? metaOf(b.dataset.k) : null;
       b.textContent = m ? labelOf(m) : T('themeNone');
     });
@@ -3868,6 +3919,7 @@ class UIShell {
     $('#setTitle').textContent = T('settings');
     $('#mkTitle').textContent = T('markTitle');
     $('#mkAddTxt').textContent = T('markAddGroup');
+    $('#mkPickDone').textContent = T('markDone');
     this.buildSettings();
     this.renderLegend();
     if (this.selId >= 0) this.renderPanel(this.selId);
@@ -3887,6 +3939,19 @@ class UIShell {
     this.theme = key || null;
     $$('.tchip').forEach((b) => b.classList.toggle('on', (b.dataset.k || null) === this.theme));
     this.view.setTheme(this.theme ? themeScale(this.theme) : null);
+    this.view.setMarkFocus(false);
+    this.renderLegend();
+    if ($('#rank').classList.contains('open')) this.renderRank();
+  }
+
+  // "自定义" chip: the base map stays natural (marks aren't a data metric),
+  // but the marks overlay switches from a subtle always-on tint to a bold
+  // spotlight -- see uMarkFocus in FS_LAND
+  setCustomTheme() {
+    this.theme = '__custom__';
+    $$('.tchip').forEach((b) => b.classList.toggle('on', b.dataset.k === '__custom__'));
+    this.view.setTheme(null);
+    this.view.setMarkFocus(true);
     this.renderLegend();
     if ($('#rank').classList.contains('open')) this.renderRank();
   }
@@ -3906,6 +3971,19 @@ class UIShell {
       box.appendChild(mk('rgba(150,242,224,.9)', T('coastline')));
       box.appendChild(mk('rgba(150,242,224,.45)', T('border')));
       box.appendChild(mk('rgba(242,181,82,.9)', T('ninedash'), true));
+      return;
+    }
+    if (this.theme === '__custom__') {
+      box.appendChild(el('div', 'lgtitle', T('markTitle')));
+      if (!this.markGroups.length) { box.appendChild(el('div', 'lgnote', T('markEmpty'))); return; }
+      for (const grp of this.markGroups) {
+        const row = el('div', 'k');
+        const dot = el('i', 'lgdot');
+        dot.style.background = grp.color; dot.style.borderColor = grp.color;
+        row.appendChild(dot);
+        row.appendChild(el('span', null, `${grp.name} · ${grp.keys.length}`));
+        box.appendChild(row);
+      }
       return;
     }
     const m = metaOf(this.theme), r = DATA.ranks[this.theme];
@@ -3967,8 +4045,11 @@ class UIShell {
     const n = $('#marks');
     const open = force != null ? force : !n.classList.contains('open');
     n.classList.toggle('open', open);
-    $('#tMarks').classList.toggle('on', open);
-    if (open) this.renderMarks(); else this.stopMarkPick();
+    // the toolbar button glows for either the manager panel being open or a
+    // pick actually in progress (the panel closes itself while picking, see
+    // startMarkPick, so without this the button would go dark mid-pick)
+    $('#tMarks').classList.toggle('on', open || this.markPickId != null);
+    if (open) this.renderMarks();
   }
 
   addMarkGroup() {
@@ -3982,6 +4063,7 @@ class UIShell {
     this.markGroups.push(grp);
     this.saveMarks();
     this.renderMarks();
+    if (this.theme === '__custom__') this.renderLegend();
     this.startMarkPick(grp.id);
   }
 
@@ -3991,6 +4073,8 @@ class UIShell {
     this.saveMarks();
     this.view.rebuildMarks(this.markGroups);
     this.renderMarks();
+    this.syncMarkPickBar();
+    if (this.theme === '__custom__') this.renderLegend();
   }
 
   toggleMarkCountry(groupId, idx) {
@@ -4002,24 +4086,44 @@ class UIShell {
     this.saveMarks();
     this.view.rebuildMarks(this.markGroups);
     this.renderMarks();
+    if (this.theme === '__custom__') this.renderLegend();
   }
 
   startMarkPick(id) {
     this.markPickId = id;
+    // the manager panel is a centred modal -- left open it would sit right
+    // on top of the globe and swallow every click meant for a country, so
+    // picking closes it and hands off to the small floating bar instead
+    $('#marks').classList.remove('open');
+    $('#tMarks').classList.add('on');
     this.renderMarks();
-    this.toast(T('markPickHint'));
+    this.syncMarkPickBar();
   }
   stopMarkPick() {
     if (this.markPickId == null) return;
     this.markPickId = null;
+    $('#tMarks').classList.toggle('on', $('#marks').classList.contains('open'));
     this.renderMarks();
+    this.syncMarkPickBar();
+  }
+  syncMarkPickBar() {
+    const grp = this.markGroups.find((g) => g.id === this.markPickId);
+    const bar = $('#mkPickBar');
+    bar.classList.toggle('on', !!grp);
+    if (grp) {
+      $('#mkPickDot').style.background = grp.color;
+      $('#mkPickDot').style.color = grp.color;
+      $('#mkPickName').textContent = grp.name;
+    }
   }
 
   renderMarks() {
     $('#mkSub').textContent = T('markSub');
     const list = $('#mkList');
-    const focused = document.activeElement && document.activeElement.closest && document.activeElement.closest('#mkList');
-    if (focused) return; // don't yank focus out from under an in-progress name edit
+    // don't yank a name input's value out from under an in-progress edit --
+    // that's the only element in here whose content isn't fully re-derived
+    // from state on every keystroke, so it's the only one worth guarding
+    if (document.activeElement && document.activeElement.classList.contains('mkname')) return;
     list.innerHTML = '';
     if (!this.markGroups.length) { list.appendChild(el('div', 'soon', T('markEmpty'))); return; }
     for (const grp of this.markGroups) {
@@ -4253,7 +4357,7 @@ class UIShell {
 /* ============================================================
    bootstrap
    ============================================================ */
-const VERSION = '20260904103750';
+const VERSION = '20260904110804';
 
 function bootStep(pct, label) {
   const b = $('#bootBar');

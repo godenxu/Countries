@@ -86,7 +86,7 @@ void main(){
 const FS_LAND = `#version 300 es
 precision highp float;
 uniform sampler2D uPal, uPalB, uMark;
-uniform float uHover, uSel, uTime, uMorph, uPalMix, uSweep, uBuild, uNight;
+uniform float uHover, uSel, uTime, uMorph, uPalMix, uSweep, uBuild, uNight, uMarkFocus;
 uniform vec3 uSun, uEye;
 in vec3 vN; in vec2 vLL; in vec3 vWorld; flat in float vCid;
 out vec4 o;
@@ -130,9 +130,14 @@ void main(){
   c += vec3(0.20, 0.95, 0.80) * exp(-abs(sweepLon)*0.55) * 0.10;
   // user-defined marks (e.g. "which countries are in this org") overlay on
   // top of whatever palette is active, so they stay visible in both natural
-  // and thematic mode; selection/hover glow still layers on top of this
+  // and thematic mode; selection/hover glow still layers on top of this.
+  // "Custom" view mode (uMarkFocus) turns them into a bold spotlight: marked
+  // countries saturate further while everything unmarked fades to neutral,
+  // the same way switching to a data theme replaces the natural map's story
   vec4 mk = texelFetch(uMark, ivec2(int(vCid + 0.5), 0), 0);
-  c = mix(c, mk.rgb, mk.a * 0.55);
+  float hasMark = step(0.01, mk.a);
+  c = mix(c, mk.rgb, mk.a * mix(0.55, 0.88, uMarkFocus));
+  c = mix(c, vec3(0.10, 0.12, 0.15), (1.0 - hasMark) * uMarkFocus * 0.62);
   float sel = step(abs(vCid - uSel), 0.5);
   float hov = step(abs(vCid - uHover), 0.5) * (1.0 - sel);
   c = mix(c, vec3(0.30, 0.92, 0.78), hov*0.32);
