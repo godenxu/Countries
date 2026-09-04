@@ -57,6 +57,9 @@ const I18N = {
   zh: {
     brand: '寰宇', tagline: '世界国家信息大全', search: '搜索国家 / 城市 / 拼音 / 代码…', noResult: '无匹配结果',
     noCityData: '暂无城市数据收录',
+    markTitle: '自定义标记', markSub: '为国家自定义颜色标记，同时显示多套', markAddGroup: '新建标记组',
+    markGroupDefault: '标记组 ', markPick: '选国家', markDone: '完成',
+    markPickHint: '点击地图为该标记组添加或移除国家，再次点击"完成"结束', markEmpty: '还没有标记组，点击下方按钮新建一个',
     globe: '地球仪', map: '平面图', spin: '自转', reset: '复位', zoomIn: '放大', zoomOut: '缩小',
     fullscreen: '全屏', settings: '视觉设置', ranking: '排行榜', random: '随机漫游', favorite: '收藏',
     compare: '对比', lang: '语言',
@@ -106,6 +109,10 @@ const I18N = {
   en: {
     brand: 'ATLAS', tagline: 'World Country Almanac', search: 'Search country / city / code…', noResult: 'No match',
     noCityData: 'No city data catalogued yet',
+    markTitle: 'Custom marks', markSub: 'Colour-tag countries into your own sets, several shown at once',
+    markAddGroup: 'New mark group', markGroupDefault: 'Group ', markPick: 'Pick', markDone: 'Done',
+    markPickHint: 'Click the map to add/remove countries for this group, click "Done" to finish',
+    markEmpty: 'No mark groups yet — add one below',
     globe: 'Globe', map: 'Map', spin: 'Spin', reset: 'Reset', zoomIn: 'Zoom in', zoomOut: 'Zoom out',
     fullscreen: 'Fullscreen', settings: 'Visual settings', ranking: 'Leaderboard', random: 'Surprise me',
     favorite: 'Favourite', compare: 'Compare', lang: 'Language',

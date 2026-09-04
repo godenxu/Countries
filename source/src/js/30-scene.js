@@ -85,7 +85,7 @@ void main(){
 
 const FS_LAND = `#version 300 es
 precision highp float;
-uniform sampler2D uPal, uPalB;
+uniform sampler2D uPal, uPalB, uMark;
 uniform float uHover, uSel, uTime, uMorph, uPalMix, uSweep, uBuild, uNight;
 uniform vec3 uSun, uEye;
 in vec3 vN; in vec2 vLL; in vec3 vWorld; flat in float vCid;
@@ -128,6 +128,11 @@ void main(){
   // scanning sweep
   float sweepLon = mod(vLL.x - uSweep + 540.0, 360.0) - 180.0;
   c += vec3(0.20, 0.95, 0.80) * exp(-abs(sweepLon)*0.55) * 0.10;
+  // user-defined marks (e.g. "which countries are in this org") overlay on
+  // top of whatever palette is active, so they stay visible in both natural
+  // and thematic mode; selection/hover glow still layers on top of this
+  vec4 mk = texelFetch(uMark, ivec2(int(vCid + 0.5), 0), 0);
+  c = mix(c, mk.rgb, mk.a * 0.55);
   float sel = step(abs(vCid - uSel), 0.5);
   float hov = step(abs(vCid - uHover), 0.5) * (1.0 - sel);
   c = mix(c, vec3(0.30, 0.92, 0.78), hov*0.32);
@@ -475,12 +480,6 @@ void main(){
 }`;
 
 /* ---------------- palettes ---------------- */
-const REGION_COLOR = {
-  Asia: [0.176, 0.290, 0.247], Europe: [0.157, 0.259, 0.310],
-  Africa: [0.294, 0.259, 0.184], Americas: [0.157, 0.282, 0.278],
-  Oceania: [0.196, 0.278, 0.231], Antarctic: [0.227, 0.278, 0.325], '': [0.20, 0.25, 0.27],
-};
-
 function hsl2rgb(h, s, l) {
   h = (((h % 360) + 360) % 360) / 360;
   const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
@@ -495,24 +494,64 @@ function hsl2rgb(h, s, l) {
   return [f(h + 1 / 3), f(h), f(h - 1 / 3)];
 }
 
-// every UN subregion gets its own hue so a continent doesn't collapse into
-// one indistinguishable colour family -- neighbours within a region (e.g.
-// Western vs. Eastern Europe) still read as clearly different groups
-const SUBREGION_HSL = {
-  'Northern Africa': [32, 0.42, 0.30], 'Sub-Saharan Africa': [18, 0.38, 0.28],
-  'Western Africa': [12, 0.46, 0.30], 'Middle Africa': [50, 0.40, 0.28],
-  'Eastern Africa': [355, 0.36, 0.30], 'Southern Africa': [300, 0.28, 0.30],
-  'Northern America': [205, 0.34, 0.30], 'Central America': [140, 0.38, 0.28],
-  'South America': [95, 0.38, 0.28], 'Caribbean': [175, 0.42, 0.30],
-  'Central Asia': [265, 0.30, 0.32], 'Eastern Asia': [128, 0.34, 0.28],
-  'South-Eastern Asia': [70, 0.40, 0.28], 'Southern Asia': [40, 0.44, 0.30],
-  'Western Asia': [8, 0.40, 0.32], 'Eastern Europe': [235, 0.32, 0.32],
-  'Northern Europe': [210, 0.36, 0.34], 'Southern Europe': [340, 0.28, 0.34],
-  'Western Europe': [190, 0.30, 0.32], 'Central Europe': [280, 0.26, 0.32],
-  'Southeast Europe': [315, 0.28, 0.32],
-  'Australia and New Zealand': [165, 0.34, 0.30], 'Melanesia': [150, 0.38, 0.30],
-  'Micronesia': [185, 0.38, 0.32], 'Polynesia': [200, 0.40, 0.34],
-};
+// Welsh-Powell (below) always fills the lowest-numbered class it can, so
+// classes 0-3 do almost all the work -- exactly the four the four-colour
+// theorem guarantees suffice for a planar adjacency graph -- with 4-7 as
+// rarely-needed overflow for unusually dense clusters. Ordering the hues so
+// 0-3 are a full 90 degrees apart (not just the 45 a flat 8-way split would
+// give) keeps the classes that actually end up next to each other maximally
+// distinct; 4-7 interleave the remaining 45-degree steps as a fallback.
+const CLASS_HUE = [10, 100, 190, 280, 55, 145, 235, 325];
+// classes 4-7 sit only 45 degrees from their nearest 0-3 neighbour in hue,
+// so they're also pushed darker and more saturated -- a second, independent
+// axis of separation that keeps a rare 5th-color country from reading as a
+// near-twin of an adjacent 0-3 country even when the hues alone are close
+const CLASS_SL = [[0.32, 0.32], [0.32, 0.32], [0.32, 0.32], [0.32, 0.32],
+  [0.44, 0.22], [0.44, 0.22], [0.44, 0.22], [0.44, 0.22]];
+function classColor(cls) {
+  const idx = cls % CLASS_HUE.length;
+  const bank = Math.floor(cls / CLASS_HUE.length);
+  const [s, l] = CLASS_SL[idx];
+  return hsl2rgb(CLASS_HUE[idx], s, clamp(l + (bank % 3) * 0.05, 0.14, 0.46));
+}
+
+// greedy Welsh-Powell graph colouring over the country border graph: visit
+// countries highest-degree first and give each the lowest colour class none
+// of its already-coloured neighbours use, so two countries that share a
+// border are structurally guaranteed to land in different colour families
+// (islands with no border data get a hash-based class instead of piling
+// them all into class 0, purely for visual variety -- no adjacency to honour)
+function graphColorCountries(meta, countries) {
+  const n = Math.min(meta.length, 256);
+  const byKey = {};
+  for (let i = 0; i < n; i++) if (countries[i]) byKey[countries[i].k] = i;
+  const adj = Array.from({ length: n }, () => []);
+  for (let i = 0; i < n; i++) {
+    const rec = countries[i];
+    if (!rec || !rec.borders) continue;
+    for (const b of rec.borders) {
+      const j = byKey[b];
+      if (j == null || j === i) continue;
+      adj[i].push(j); adj[j].push(i);
+    }
+  }
+  const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => adj[b].length - adj[a].length);
+  const color = new Int32Array(n).fill(-1);
+  for (const i of order) {
+    const used = new Set();
+    for (const j of adj[i]) if (color[j] >= 0) used.add(color[j]);
+    let c0 = 0;
+    while (used.has(c0)) c0++;
+    color[i] = c0;
+  }
+  for (let i = 0; i < n; i++) {
+    if (adj[i].length) continue;
+    let h = 0; const k = (countries[i] && countries[i].k) || '';
+    for (let x = 0; x < k.length; x++) h = (h * 31 + k.charCodeAt(x)) & 0xffff;
+    color[i] = h % CLASS_HUE.length;
+  }
+  return color;
+}
 
 // alpha channel carries normalised log population density -> night-light intensity
 function densityAlpha(rec) {
@@ -524,11 +563,10 @@ function densityAlpha(rec) {
 
 function buildPalette(meta, countries) {
   const px = new Uint8Array(256 * 4);
+  const cls = graphColorCountries(meta, countries);
   for (let i = 0; i < meta.length && i < 256; i++) {
     const rec = countries[i];
-    const sub = rec && rec.sub && rec.sub.en;
-    const hsl = sub && SUBREGION_HSL[sub];
-    const base = hsl ? hsl2rgb(hsl[0], hsl[1], hsl[2]) : (REGION_COLOR[(rec && rec.reg.en) || ''] || REGION_COLOR['']);
+    const base = classColor(cls[i]);
     let h = 0; const k = meta[i].key;
     for (let c = 0; c < k.length; c++) h = (h * 31 + k.charCodeAt(c)) & 0xffff;
     const j = ((h % 100) / 100 - 0.5) * 0.20;
@@ -537,6 +575,42 @@ function buildPalette(meta, countries) {
     px[i * 4 + 1] = clamp((base[1] * (1 + j)) * 255, 8, 250);
     px[i * 4 + 2] = clamp((base[2] * (1 + j) - warm * 0.5) * 255, 8, 250);
     px[i * 4 + 3] = densityAlpha(rec);
+  }
+  return px;
+}
+
+function hexToRgb255(hex) {
+  const h = String(hex || '').replace('#', '');
+  const n = parseInt(h.length === 3 ? h.replace(/(.)/g, '$1$1') : h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+// user-defined "mark" groups (e.g. org membership) painted onto a 256x1
+// lookup texture, same shape as the natural/theme palettes -- a country in
+// more than one active group gets the average of those groups' colours
+function buildMarkPalette(meta, countries, groups) {
+  const px = new Uint8Array(256 * 4);
+  if (!groups || !groups.length) return px;
+  const byKey = {};
+  for (let i = 0; i < meta.length && i < 256; i++) if (countries[i]) byKey[countries[i].k] = i;
+  const n = Math.min(meta.length, 256);
+  const acc = Array.from({ length: n }, () => [0, 0, 0, 0]);
+  for (const grp of groups) {
+    if (!grp.keys || !grp.keys.length) continue;
+    const rgb = hexToRgb255(grp.color);
+    for (const k of grp.keys) {
+      const i = byKey[k];
+      if (i == null) continue;
+      acc[i][0] += rgb[0]; acc[i][1] += rgb[1]; acc[i][2] += rgb[2]; acc[i][3]++;
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const [r, g, b, cnt] = acc[i];
+    if (!cnt) continue;
+    px[i * 4 + 0] = clamp(r / cnt, 0, 255);
+    px[i * 4 + 1] = clamp(g / cnt, 0, 255);
+    px[i * 4 + 2] = clamp(b / cnt, 0, 255);
+    px[i * 4 + 3] = 220;
   }
   return px;
 }

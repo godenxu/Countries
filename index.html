@@ -181,11 +181,20 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .chip.gold { background: rgba(242,181,82,.13); border-color: rgba(242,181,82,.3); color: var(--gold); }
 .chip.dim { background: rgba(127,154,163,.1); border-color: rgba(127,154,163,.22); color: var(--muted); }
 
-.pn-tabs { display: flex; gap: 2px; padding: 8px 10px 0; overflow-x: auto; flex: none;
-  scrollbar-width: none; border-bottom: 1px solid rgba(70,224,184,.13); }
+.pn-tabs-wrap { position: relative; flex: none; }
+.pn-tabs-wrap::after {
+  /* fade the trailing edge so a partly-visible last tab reads as "more to
+     scroll", not as a layout glitch -- hidden once actually scrolled to the end */
+  content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 22px;
+  background: linear-gradient(90deg, transparent, rgba(9,20,30,.86));
+  pointer-events: none; opacity: 1; transition: opacity .2s ease;
+}
+.pn-tabs-wrap.at-end::after { opacity: 0; }
+.pn-tabs { display: flex; gap: 1px; padding: 8px 10px 0; overflow-x: auto; flex: none;
+  scrollbar-width: none; border-bottom: 1px solid rgba(70,224,184,.13); scroll-behavior: smooth; }
 .pn-tabs::-webkit-scrollbar { display: none; }
-.ptab { padding: 6px 11px 8px; font-size: 12px; color: var(--muted); white-space: nowrap;
-  border-bottom: 2px solid transparent; transition: all .18s ease; }
+.ptab { padding: 6px 8px 8px; font-size: 11.5px; color: var(--muted); white-space: nowrap;
+  border-bottom: 2px solid transparent; transition: all .18s ease; flex: none; }
 .ptab:hover { color: #cfe9e3; }
 .ptab.on { color: var(--aurora); border-bottom-color: var(--aurora);
   text-shadow: 0 0 12px rgba(70,224,184,.5); }
@@ -250,11 +259,15 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
     transition: transform .4s cubic-bezier(.22,.9,.28,1);
   }
   /* peek state shows roughly half the screen (never more than 460px) so the
-     KPI row and the first section are readable without an extra tap */
-  #panel.open { transform: translateY(calc(100% - min(50vh, 460px))); }
-  #panel.open.full { transform: translateY(0); }
+     KPI row and the first section are readable without an extra tap --
+     --peek is a live px override the grab handle drags freely between a
+     minimum and near-full height; tapping the header still jumps between
+     the default peek and near-full as a shortcut */
+  #panel.open { transform: translateY(calc(100% - var(--peek, min(50vh, 460px)))); }
   .pn-grab { display: block; width: 38px; height: 4px; border-radius: 2px;
-    background: rgba(127,154,163,.4); margin: 8px auto 2px; }
+    background: rgba(127,154,163,.4); margin: 8px auto 2px; cursor: grab; touch-action: none; }
+  .pn-grab:active { cursor: grabbing; background: rgba(70,224,184,.5); }
+  #panel.dragging { transition: none; }
   .pn-head { padding-top: 4px; }
   .pn-body { padding-bottom: calc(30px + var(--sab)); }
   #tools { bottom: calc(10px + var(--sab)); }
@@ -408,16 +421,44 @@ i.live { color: var(--aurora); font-size: 8px; margin-left: 5px; vertical-align:
 .note.mono { font-family: var(--mono); letter-spacing: .08em; }
 
 /* ---------- compare & settings ---------- */
-#cmp, #settings {
+#cmp, #settings, #marks {
   position: absolute; z-index: 60; border-radius: 14px; overflow: hidden;
   left: 50%; top: 50%; width: min(92vw, 520px); max-height: 78vh;
   display: flex; flex-direction: column;
   transform: translate(-50%, -46%) scale(.96); opacity: 0; pointer-events: none;
   transition: all .3s cubic-bezier(.2,.9,.3,1);
 }
-#settings { width: min(92vw, 380px); }
-#cmp.open, #settings.open { opacity: 1; transform: translate(-50%, -50%) scale(1); pointer-events: auto; }
+#settings, #marks { width: min(92vw, 420px); }
+#cmp.open, #settings.open, #marks.open { opacity: 1; transform: translate(-50%, -50%) scale(1); pointer-events: auto; }
 .cmp-body, .set-body { overflow-y: auto; padding: 12px 14px 18px; }
+
+/* ---------- custom country marks ---------- */
+.mk-list { overflow-y: auto; padding: 10px 12px 4px; display: flex; flex-direction: column; gap: 6px; }
+.mkrow { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 9px;
+  background: rgba(12,28,38,.55); border: 1px solid rgba(70,224,184,.14); transition: border-color .15s; }
+.mkrow.picking { border-color: var(--gold); box-shadow: 0 0 0 1px rgba(242,181,82,.3); }
+.mkswatch { width: 26px; height: 26px; border: none; border-radius: 6px; padding: 0; background: none;
+  cursor: pointer; flex: none; }
+.mkswatch::-webkit-color-swatch-wrapper { padding: 0; }
+.mkswatch::-webkit-color-swatch { border: 1px solid rgba(255,255,255,.25); border-radius: 6px; }
+.mkname { flex: 1; min-width: 0; background: rgba(4,10,16,.5); border: 1px solid rgba(70,224,184,.18);
+  border-radius: 6px; color: var(--ink); font: inherit; font-size: 12.5px; padding: 5px 7px; }
+.mkname:focus { outline: none; border-color: var(--line-str); }
+.mkcount { flex: none; font-size: 10.5px; color: var(--muted-dim); min-width: 26px; text-align: right;
+  font-variant-numeric: tabular-nums; }
+.mkpick { flex: none; padding: 5px 10px; border-radius: 7px; font-size: 11px; white-space: nowrap;
+  background: rgba(70,224,184,.12); border: 1px solid rgba(70,224,184,.26); color: #9fe3d2; }
+.mkpick:hover { background: rgba(70,224,184,.22); }
+.mkpick.on { background: rgba(242,181,82,.2); border-color: rgba(242,181,82,.5); color: var(--gold); }
+.mkdel { flex: none; width: 26px; height: 26px; border-radius: 7px; color: var(--muted);
+  display: flex; align-items: center; justify-content: center; }
+.mkdel:hover { color: var(--coral); background: rgba(255,111,94,.12); }
+.mkdel svg { width: 14px; height: 14px; }
+.mk-add { margin: 4px 14px 14px; padding: 9px; border-radius: 9px; display: flex; align-items: center;
+  justify-content: center; gap: 6px; font-size: 12px; color: #9fe3d2;
+  background: rgba(70,224,184,.1); border: 1px dashed rgba(70,224,184,.3); }
+.mk-add:hover { background: rgba(70,224,184,.18); }
+.mk-add svg { width: 14px; height: 14px; }
 .cmp-head { display: flex; gap: 10px; margin-bottom: 12px; }
 .cmp-side { flex: 1; display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-radius: 9px;
   background: rgba(12,28,38,.6); border: 1px solid rgba(70,224,184,.16); font-size: 13px; }
@@ -532,6 +573,15 @@ i.live { color: var(--aurora); font-size: 8px; margin-left: 5px; vertical-align:
   <div id="rkList" class="rk-list"></div>
 </aside>
 
+<aside id="marks" class="glass">
+  <div class="rk-head">
+    <div><b id="mkTitle">自定义标记</b><span id="mkSub"></span></div>
+    <button class="pn-close" id="mkClose"></button>
+  </div>
+  <div id="mkList" class="mk-list"></div>
+  <button id="mkAdd" class="mk-add"></button>
+</aside>
+
 <aside id="panel" class="glass">
   <div class="pn-grab"></div>
   <div class="pn-head" id="pnHead">
@@ -546,7 +596,7 @@ i.live { color: var(--aurora); font-size: 8px; margin-left: 5px; vertical-align:
     </div>
     <div class="pn-chips" id="pnChips"></div>
   </div>
-  <div class="pn-tabs" id="pnTabs"></div>
+  <div class="pn-tabs-wrap"><div class="pn-tabs" id="pnTabs"></div></div>
   <div class="pn-body" id="pnBody"></div>
 </aside>
 
@@ -554,6 +604,7 @@ i.live { color: var(--aurora); font-size: 8px; margin-left: 5px; vertical-align:
   <button class="tbtn glass" id="tZoomIn"></button>
   <button class="tbtn glass" id="tZoomOut"></button>
   <button class="tbtn glass" id="tRank"></button>
+  <button class="tbtn glass" id="tMarks"></button>
   <button class="tbtn glass" id="tDice"></button>
   <button class="tbtn glass" id="tSpin"></button>
   <button class="tbtn glass" id="tReset"></button>
@@ -651,6 +702,9 @@ const I18N = {
   zh: {
     brand: '寰宇', tagline: '世界国家信息大全', search: '搜索国家 / 城市 / 拼音 / 代码…', noResult: '无匹配结果',
     noCityData: '暂无城市数据收录',
+    markTitle: '自定义标记', markSub: '为国家自定义颜色标记，同时显示多套', markAddGroup: '新建标记组',
+    markGroupDefault: '标记组 ', markPick: '选国家', markDone: '完成',
+    markPickHint: '点击地图为该标记组添加或移除国家，再次点击"完成"结束', markEmpty: '还没有标记组，点击下方按钮新建一个',
     globe: '地球仪', map: '平面图', spin: '自转', reset: '复位', zoomIn: '放大', zoomOut: '缩小',
     fullscreen: '全屏', settings: '视觉设置', ranking: '排行榜', random: '随机漫游', favorite: '收藏',
     compare: '对比', lang: '语言',
@@ -700,6 +754,10 @@ const I18N = {
   en: {
     brand: 'ATLAS', tagline: 'World Country Almanac', search: 'Search country / city / code…', noResult: 'No match',
     noCityData: 'No city data catalogued yet',
+    markTitle: 'Custom marks', markSub: 'Colour-tag countries into your own sets, several shown at once',
+    markAddGroup: 'New mark group', markGroupDefault: 'Group ', markPick: 'Pick', markDone: 'Done',
+    markPickHint: 'Click the map to add/remove countries for this group, click "Done" to finish',
+    markEmpty: 'No mark groups yet — add one below',
     globe: 'Globe', map: 'Map', spin: 'Spin', reset: 'Reset', zoomIn: 'Zoom in', zoomOut: 'Zoom out',
     fullscreen: 'Fullscreen', settings: 'Visual settings', ranking: 'Leaderboard', random: 'Surprise me',
     favorite: 'Favourite', compare: 'Compare', lang: 'Language',
@@ -1208,7 +1266,7 @@ void main(){
 
 const FS_LAND = `#version 300 es
 precision highp float;
-uniform sampler2D uPal, uPalB;
+uniform sampler2D uPal, uPalB, uMark;
 uniform float uHover, uSel, uTime, uMorph, uPalMix, uSweep, uBuild, uNight;
 uniform vec3 uSun, uEye;
 in vec3 vN; in vec2 vLL; in vec3 vWorld; flat in float vCid;
@@ -1251,6 +1309,11 @@ void main(){
   // scanning sweep
   float sweepLon = mod(vLL.x - uSweep + 540.0, 360.0) - 180.0;
   c += vec3(0.20, 0.95, 0.80) * exp(-abs(sweepLon)*0.55) * 0.10;
+  // user-defined marks (e.g. "which countries are in this org") overlay on
+  // top of whatever palette is active, so they stay visible in both natural
+  // and thematic mode; selection/hover glow still layers on top of this
+  vec4 mk = texelFetch(uMark, ivec2(int(vCid + 0.5), 0), 0);
+  c = mix(c, mk.rgb, mk.a * 0.55);
   float sel = step(abs(vCid - uSel), 0.5);
   float hov = step(abs(vCid - uHover), 0.5) * (1.0 - sel);
   c = mix(c, vec3(0.30, 0.92, 0.78), hov*0.32);
@@ -1598,12 +1661,6 @@ void main(){
 }`;
 
 /* ---------------- palettes ---------------- */
-const REGION_COLOR = {
-  Asia: [0.176, 0.290, 0.247], Europe: [0.157, 0.259, 0.310],
-  Africa: [0.294, 0.259, 0.184], Americas: [0.157, 0.282, 0.278],
-  Oceania: [0.196, 0.278, 0.231], Antarctic: [0.227, 0.278, 0.325], '': [0.20, 0.25, 0.27],
-};
-
 function hsl2rgb(h, s, l) {
   h = (((h % 360) + 360) % 360) / 360;
   const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
@@ -1618,24 +1675,64 @@ function hsl2rgb(h, s, l) {
   return [f(h + 1 / 3), f(h), f(h - 1 / 3)];
 }
 
-// every UN subregion gets its own hue so a continent doesn't collapse into
-// one indistinguishable colour family -- neighbours within a region (e.g.
-// Western vs. Eastern Europe) still read as clearly different groups
-const SUBREGION_HSL = {
-  'Northern Africa': [32, 0.42, 0.30], 'Sub-Saharan Africa': [18, 0.38, 0.28],
-  'Western Africa': [12, 0.46, 0.30], 'Middle Africa': [50, 0.40, 0.28],
-  'Eastern Africa': [355, 0.36, 0.30], 'Southern Africa': [300, 0.28, 0.30],
-  'Northern America': [205, 0.34, 0.30], 'Central America': [140, 0.38, 0.28],
-  'South America': [95, 0.38, 0.28], 'Caribbean': [175, 0.42, 0.30],
-  'Central Asia': [265, 0.30, 0.32], 'Eastern Asia': [128, 0.34, 0.28],
-  'South-Eastern Asia': [70, 0.40, 0.28], 'Southern Asia': [40, 0.44, 0.30],
-  'Western Asia': [8, 0.40, 0.32], 'Eastern Europe': [235, 0.32, 0.32],
-  'Northern Europe': [210, 0.36, 0.34], 'Southern Europe': [340, 0.28, 0.34],
-  'Western Europe': [190, 0.30, 0.32], 'Central Europe': [280, 0.26, 0.32],
-  'Southeast Europe': [315, 0.28, 0.32],
-  'Australia and New Zealand': [165, 0.34, 0.30], 'Melanesia': [150, 0.38, 0.30],
-  'Micronesia': [185, 0.38, 0.32], 'Polynesia': [200, 0.40, 0.34],
-};
+// Welsh-Powell (below) always fills the lowest-numbered class it can, so
+// classes 0-3 do almost all the work -- exactly the four the four-colour
+// theorem guarantees suffice for a planar adjacency graph -- with 4-7 as
+// rarely-needed overflow for unusually dense clusters. Ordering the hues so
+// 0-3 are a full 90 degrees apart (not just the 45 a flat 8-way split would
+// give) keeps the classes that actually end up next to each other maximally
+// distinct; 4-7 interleave the remaining 45-degree steps as a fallback.
+const CLASS_HUE = [10, 100, 190, 280, 55, 145, 235, 325];
+// classes 4-7 sit only 45 degrees from their nearest 0-3 neighbour in hue,
+// so they're also pushed darker and more saturated -- a second, independent
+// axis of separation that keeps a rare 5th-color country from reading as a
+// near-twin of an adjacent 0-3 country even when the hues alone are close
+const CLASS_SL = [[0.32, 0.32], [0.32, 0.32], [0.32, 0.32], [0.32, 0.32],
+  [0.44, 0.22], [0.44, 0.22], [0.44, 0.22], [0.44, 0.22]];
+function classColor(cls) {
+  const idx = cls % CLASS_HUE.length;
+  const bank = Math.floor(cls / CLASS_HUE.length);
+  const [s, l] = CLASS_SL[idx];
+  return hsl2rgb(CLASS_HUE[idx], s, clamp(l + (bank % 3) * 0.05, 0.14, 0.46));
+}
+
+// greedy Welsh-Powell graph colouring over the country border graph: visit
+// countries highest-degree first and give each the lowest colour class none
+// of its already-coloured neighbours use, so two countries that share a
+// border are structurally guaranteed to land in different colour families
+// (islands with no border data get a hash-based class instead of piling
+// them all into class 0, purely for visual variety -- no adjacency to honour)
+function graphColorCountries(meta, countries) {
+  const n = Math.min(meta.length, 256);
+  const byKey = {};
+  for (let i = 0; i < n; i++) if (countries[i]) byKey[countries[i].k] = i;
+  const adj = Array.from({ length: n }, () => []);
+  for (let i = 0; i < n; i++) {
+    const rec = countries[i];
+    if (!rec || !rec.borders) continue;
+    for (const b of rec.borders) {
+      const j = byKey[b];
+      if (j == null || j === i) continue;
+      adj[i].push(j); adj[j].push(i);
+    }
+  }
+  const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => adj[b].length - adj[a].length);
+  const color = new Int32Array(n).fill(-1);
+  for (const i of order) {
+    const used = new Set();
+    for (const j of adj[i]) if (color[j] >= 0) used.add(color[j]);
+    let c0 = 0;
+    while (used.has(c0)) c0++;
+    color[i] = c0;
+  }
+  for (let i = 0; i < n; i++) {
+    if (adj[i].length) continue;
+    let h = 0; const k = (countries[i] && countries[i].k) || '';
+    for (let x = 0; x < k.length; x++) h = (h * 31 + k.charCodeAt(x)) & 0xffff;
+    color[i] = h % CLASS_HUE.length;
+  }
+  return color;
+}
 
 // alpha channel carries normalised log population density -> night-light intensity
 function densityAlpha(rec) {
@@ -1647,11 +1744,10 @@ function densityAlpha(rec) {
 
 function buildPalette(meta, countries) {
   const px = new Uint8Array(256 * 4);
+  const cls = graphColorCountries(meta, countries);
   for (let i = 0; i < meta.length && i < 256; i++) {
     const rec = countries[i];
-    const sub = rec && rec.sub && rec.sub.en;
-    const hsl = sub && SUBREGION_HSL[sub];
-    const base = hsl ? hsl2rgb(hsl[0], hsl[1], hsl[2]) : (REGION_COLOR[(rec && rec.reg.en) || ''] || REGION_COLOR['']);
+    const base = classColor(cls[i]);
     let h = 0; const k = meta[i].key;
     for (let c = 0; c < k.length; c++) h = (h * 31 + k.charCodeAt(c)) & 0xffff;
     const j = ((h % 100) / 100 - 0.5) * 0.20;
@@ -1660,6 +1756,42 @@ function buildPalette(meta, countries) {
     px[i * 4 + 1] = clamp((base[1] * (1 + j)) * 255, 8, 250);
     px[i * 4 + 2] = clamp((base[2] * (1 + j) - warm * 0.5) * 255, 8, 250);
     px[i * 4 + 3] = densityAlpha(rec);
+  }
+  return px;
+}
+
+function hexToRgb255(hex) {
+  const h = String(hex || '').replace('#', '');
+  const n = parseInt(h.length === 3 ? h.replace(/(.)/g, '$1$1') : h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+// user-defined "mark" groups (e.g. org membership) painted onto a 256x1
+// lookup texture, same shape as the natural/theme palettes -- a country in
+// more than one active group gets the average of those groups' colours
+function buildMarkPalette(meta, countries, groups) {
+  const px = new Uint8Array(256 * 4);
+  if (!groups || !groups.length) return px;
+  const byKey = {};
+  for (let i = 0; i < meta.length && i < 256; i++) if (countries[i]) byKey[countries[i].k] = i;
+  const n = Math.min(meta.length, 256);
+  const acc = Array.from({ length: n }, () => [0, 0, 0, 0]);
+  for (const grp of groups) {
+    if (!grp.keys || !grp.keys.length) continue;
+    const rgb = hexToRgb255(grp.color);
+    for (const k of grp.keys) {
+      const i = byKey[k];
+      if (i == null) continue;
+      acc[i][0] += rgb[0]; acc[i][1] += rgb[1]; acc[i][2] += rgb[2]; acc[i][3]++;
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const [r, g, b, cnt] = acc[i];
+    if (!cnt) continue;
+    px[i * 4 + 0] = clamp(r / cnt, 0, 255);
+    px[i * 4 + 1] = clamp(g / cnt, 0, 255);
+    px[i * 4 + 2] = clamp(b / cnt, 0, 255);
+    px[i * 4 + 3] = 220;
   }
   return px;
 }
@@ -1996,6 +2128,7 @@ class View {
 
     this.palTexA = this.makeTex(gl, buildPalette(m.meta, this.countries));
     this.palTexB = this.makeTex(gl, buildPalette(m.meta, this.countries));
+    this.markTex = this.makeTex(gl, new Uint8Array(256 * 4));
     this.setupLabels();
 
     this.fboScene = makeFBO(gl, 2, 2, true);
@@ -2015,6 +2148,16 @@ class View {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return t;
+  }
+
+  // re-painted whenever the user's mark groups change (add/remove a country,
+  // recolour or delete a group) -- texSubImage2D in place, no realloc needed
+  rebuildMarks(groups) {
+    const gl = this.gl;
+    const px = buildMarkPalette(this.mesh.meta, this.countries, groups);
+    gl.bindTexture(gl.TEXTURE_2D, this.markTex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    this.dirty = true;
   }
 
   setupLabels() {
@@ -2613,6 +2756,8 @@ class View {
     gl.uniform1i(this.pLand.u.uPal, 0);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.palTexB);
     gl.uniform1i(this.pLand.u.uPalB, 1);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.markTex);
+    gl.uniform1i(this.pLand.u.uMark, 2);
     gl.uniform1f(this.pLand.u.uPalMix, this.palMix);
     gl.uniform1f(this.pLand.u.uHover, this.hover);
     this.drawMesh(this.pLand, M, 0.0016, true);
@@ -3342,6 +3487,8 @@ const ICON = {
   cmp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v18M7 8 3 12l4 4M17 8l4 4-4 4"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>',
   dice: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></svg>',
+  tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M11 3h6a2 2 0 0 1 2 2v6a2 2 0 0 1-.6 1.4l-8 8a2 2 0 0 1-2.8 0l-6-6a2 2 0 0 1 0-2.8l8-8A2 2 0 0 1 11 3z"/><circle cx="15.5" cy="8.5" r="1.3" fill="currentColor" stroke="none"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
 };
 
 // system-only stacks (no webfont fetches, so this stays a self-contained file)
@@ -3365,6 +3512,9 @@ class UIShell {
     this.roamSec = clamp(+localStorage.getItem('atlas.roamSec') || 15, 3, 120);
     this.roamTimer = null;
     this.fontKey = localStorage.getItem('atlas.font') || 'pingfang';
+    this.markGroups = this.loadMarks();
+    this.markPickId = null;
+    this.view.rebuildMarks(this.markGroups);
     this.build();
     this.wire();
     this.setFont(this.fontKey);
@@ -3382,6 +3532,9 @@ class UIShell {
     $('#tReset').innerHTML = ICON.reset;
     $('#tSpin').innerHTML = ICON.spin;
     $('#tRank').innerHTML = ICON.rank;
+    $('#tMarks').innerHTML = ICON.tag;
+    $('#mkClose').innerHTML = ICON.close;
+    $('#mkAdd').innerHTML = ICON.plus + '<span id="mkAddTxt"></span>';
     $('#tDice').innerHTML = ICON.dice;
     $('#pnClose').innerHTML = ICON.close;
     $('#pnFav').innerHTML = ICON.star;
@@ -3499,27 +3652,82 @@ class UIShell {
     $('#tSpin').onclick = () => { v.spin = !v.spin; v.spinIdle = 0; $('#tSpin').classList.toggle('on', v.spin); };
     $('#tSpin').classList.toggle('on', v.spin);
     $('#tRank').onclick = () => this.toggleRank();
+    $('#tMarks').onclick = () => this.toggleMarks();
     $('#tDice').onclick = () => this.toggleRoam();
     $('#pnClose').onclick = () => this.select(-1);
     $('#pnFav').onclick = () => this.toggleFav(this.selId);
     $('#pnCmp').onclick = () => this.startCompare();
     $('#rkClose').onclick = () => this.toggleRank(false);
+    $('#mkClose').onclick = () => this.toggleMarks(false);
+    $('#mkAdd').onclick = () => this.addMarkGroup();
+    $('#mkList').addEventListener('input', (e) => {
+      const row = e.target.closest('.mkrow'); if (!row) return;
+      const grp = this.markGroups.find((g) => g.id === row.dataset.id); if (!grp) return;
+      if (e.target.classList.contains('mkswatch')) { grp.color = e.target.value; this.view.rebuildMarks(this.markGroups); }
+      if (e.target.classList.contains('mkname')) grp.name = e.target.value;
+      this.saveMarks();
+    });
+    $('#mkList').addEventListener('click', (e) => {
+      const row = e.target.closest('.mkrow'); if (!row) return;
+      const id = row.dataset.id;
+      if (e.target.closest('.mkpick')) this.markPickId === id ? this.stopMarkPick() : this.startMarkPick(id);
+      else if (e.target.closest('.mkdel')) this.deleteMarkGroup(id);
+    });
     $('#cmpClose').onclick = () => $('#cmp').classList.remove('open');
     $('#pnTabs').onclick = (e) => {
       const b = e.target.closest('.ptab'); if (!b) return;
       this.tab = b.dataset.tab;
       $$('.ptab').forEach((x) => x.classList.toggle('on', x.dataset.tab === this.tab));
       this.renderBody();
+      b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     };
+    // desktop mice send vertical wheel deltas even over a horizontally
+    // scrolling strip -- remap so the tab row scrolls the way a trackpad
+    // swipe would, without requiring shift+scroll
+    const pnTabsEl = $('#pnTabs');
+    pnTabsEl.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      pnTabsEl.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
+    const syncTabFade = () => {
+      const atEnd = pnTabsEl.scrollWidth - pnTabsEl.clientWidth - pnTabsEl.scrollLeft < 4;
+      pnTabsEl.parentElement.classList.toggle('at-end', atEnd);
+    };
+    pnTabsEl.addEventListener('scroll', syncTabFade, { passive: true });
+    syncTabFade();
     $('#themeBar').onclick = (e) => {
       const b = e.target.closest('.tchip'); if (!b) return;
       this.setTheme(b.dataset.k || null);
     };
-    $('#pnHead').addEventListener('click', (e) => {
-      if (window.innerWidth <= 720 && !e.target.closest('button')) {
-        $('#panel').classList.toggle('full');
-        this.updateShift();
-      }
+    // mobile bottom-sheet: dragging the header (or its grab handle) freely
+    // resizes the panel via --peek; a drag too small to count (a tap) falls
+    // back to the old shortcut of jumping between default peek and near-full
+    const panelEl = $('#panel'), pnHead = $('#pnHead');
+    const peekDefault = () => Math.min(window.innerHeight * 0.5, 460);
+    const peekMax = () => window.innerHeight * 0.92;
+    const peekMin = 130;
+    const curPeek = () => parseFloat(panelEl.style.getPropertyValue('--peek')) || peekDefault();
+    const setPeek = (px) => panelEl.style.setProperty('--peek', clamp(px, peekMin, peekMax()) + 'px');
+    let dragStartY = 0, dragStartPeek = 0, dragMoved = 0, dragging = false;
+    const onMove = (e) => {
+      const dy = dragStartY - e.clientY;
+      dragMoved = Math.max(dragMoved, Math.abs(dy));
+      if (!dragging && dragMoved > 6) { dragging = true; panelEl.classList.add('dragging'); }
+      if (dragging) { setPeek(dragStartPeek + dy); this.updateShift(); }
+    };
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      panelEl.classList.remove('dragging');
+      if (!dragging) { setPeek(curPeek() > peekMax() * 0.7 ? peekDefault() : peekMax()); this.updateShift(); }
+      dragging = false;
+    };
+    pnHead.addEventListener('pointerdown', (e) => {
+      if (window.innerWidth > 720 || e.target.closest('button')) return;
+      dragStartY = e.clientY; dragStartPeek = curPeek(); dragMoved = 0; dragging = false;
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
     });
 
     const sb = $('#searchBox');
@@ -3538,7 +3746,8 @@ class UIShell {
       if (e.key === '/') { e.preventDefault(); sb.focus(); }
       if (e.key === 'Escape') {
         if (this.cmpPick) this.cancelCompare();
-        this.select(-1); $('#cmp').classList.remove('open'); $('#settings').classList.remove('open');
+        if (this.markPickId != null) this.stopMarkPick();
+        this.select(-1); $('#cmp').classList.remove('open'); $('#settings').classList.remove('open'); $('#marks').classList.remove('open');
       }
       if (e.key === ' ') { e.preventDefault(); $('#tSpin').click(); }
       if (k === 'm') this.setMode(v.cam.morph > 0.5 ? 0 : 1);
@@ -3554,6 +3763,7 @@ class UIShell {
       const id = v.pickAt(x, y);
       const g = v.screenToGeo(x, y);
       if (g) v.addRipple(g[0], g[1]);
+      if (this.markPickId != null) { if (id >= 0) this.toggleMarkCountry(this.markPickId, id); return; }
       if (this.cmpPick && id >= 0) { this.finishCompare(id); return; }
       this.select(id);
       if (id >= 0) this.flyToCountry(id);
@@ -3578,7 +3788,8 @@ class UIShell {
       const pw = $('#panel').getBoundingClientRect().width;
       return { w: Math.max(160, W - pw), h: H, side: 'x', amount: pw };
     }
-    const ph = $('#panel').classList.contains('full') ? H * 0.88 : Math.min(H * 0.5, 460);
+    const peekVar = parseFloat($('#panel').style.getPropertyValue('--peek'));
+    const ph = peekVar || Math.min(H * 0.5, 460);
     return { w: W, h: Math.max(160, H - ph), side: 'y', amount: ph };
   }
 
@@ -3655,10 +3866,13 @@ class UIShell {
     $('#rkTitle').textContent = T('ranking');
     $('#cmpTitle').textContent = T('compare');
     $('#setTitle').textContent = T('settings');
+    $('#mkTitle').textContent = T('markTitle');
+    $('#mkAddTxt').textContent = T('markAddGroup');
     this.buildSettings();
     this.renderLegend();
     if (this.selId >= 0) this.renderPanel(this.selId);
     if ($('#rank').classList.contains('open')) this.renderRank();
+    if ($('#marks').classList.contains('open')) this.renderMarks();
   }
 
   refreshAll() {
@@ -3738,6 +3952,92 @@ class UIShell {
       row.onclick = () => { this.select(i); this.flyToCountry(i); };
       list.appendChild(row);
     });
+  }
+
+  /* ---------------- custom country marks (e.g. org membership) ---------------- */
+  loadMarks() {
+    try {
+      const raw = JSON.parse(localStorage.getItem('atlas.marks') || '[]');
+      return Array.isArray(raw) ? raw.map((g) => ({ id: g.id, name: g.name || '', color: g.color || '#46e0b8', keys: Array.isArray(g.keys) ? g.keys : [] })) : [];
+    } catch { return []; }
+  }
+  saveMarks() { localStorage.setItem('atlas.marks', JSON.stringify(this.markGroups)); }
+
+  toggleMarks(force) {
+    const n = $('#marks');
+    const open = force != null ? force : !n.classList.contains('open');
+    n.classList.toggle('open', open);
+    $('#tMarks').classList.toggle('on', open);
+    if (open) this.renderMarks(); else this.stopMarkPick();
+  }
+
+  addMarkGroup() {
+    const palette = ['#46e0b8', '#f2b552', '#ff6f5e', '#7a9cff', '#c58fff', '#5fe08a', '#ffcf5c', '#4ecbe0'];
+    const grp = {
+      id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name: T('markGroupDefault') + (this.markGroups.length + 1),
+      color: palette[this.markGroups.length % palette.length],
+      keys: [],
+    };
+    this.markGroups.push(grp);
+    this.saveMarks();
+    this.renderMarks();
+    this.startMarkPick(grp.id);
+  }
+
+  deleteMarkGroup(id) {
+    this.markGroups = this.markGroups.filter((g) => g.id !== id);
+    if (this.markPickId === id) this.markPickId = null;
+    this.saveMarks();
+    this.view.rebuildMarks(this.markGroups);
+    this.renderMarks();
+  }
+
+  toggleMarkCountry(groupId, idx) {
+    const grp = this.markGroups.find((g) => g.id === groupId);
+    if (!grp) return;
+    const key = DATA.countries[idx].k;
+    const at = grp.keys.indexOf(key);
+    if (at >= 0) grp.keys.splice(at, 1); else grp.keys.push(key);
+    this.saveMarks();
+    this.view.rebuildMarks(this.markGroups);
+    this.renderMarks();
+  }
+
+  startMarkPick(id) {
+    this.markPickId = id;
+    this.renderMarks();
+    this.toast(T('markPickHint'));
+  }
+  stopMarkPick() {
+    if (this.markPickId == null) return;
+    this.markPickId = null;
+    this.renderMarks();
+  }
+
+  renderMarks() {
+    $('#mkSub').textContent = T('markSub');
+    const list = $('#mkList');
+    const focused = document.activeElement && document.activeElement.closest && document.activeElement.closest('#mkList');
+    if (focused) return; // don't yank focus out from under an in-progress name edit
+    list.innerHTML = '';
+    if (!this.markGroups.length) { list.appendChild(el('div', 'soon', T('markEmpty'))); return; }
+    for (const grp of this.markGroups) {
+      const row = el('div', 'mkrow' + (this.markPickId === grp.id ? ' picking' : ''));
+      row.dataset.id = grp.id;
+      const sw = document.createElement('input');
+      sw.type = 'color'; sw.className = 'mkswatch'; sw.value = grp.color;
+      row.appendChild(sw);
+      const nm = document.createElement('input');
+      nm.type = 'text'; nm.className = 'mkname'; nm.value = grp.name; nm.maxLength = 24;
+      row.appendChild(nm);
+      row.appendChild(el('span', 'mkcount', String(grp.keys.length)));
+      const pickBtn = el('button', 'mkpick' + (this.markPickId === grp.id ? ' on' : ''), this.markPickId === grp.id ? T('markDone') : T('markPick'));
+      row.appendChild(pickBtn);
+      const delBtn = el('button', 'mkdel'); delBtn.innerHTML = ICON.trash;
+      row.appendChild(delBtn);
+      list.appendChild(row);
+    }
   }
 
   randomPick() {
@@ -3953,7 +4253,7 @@ class UIShell {
 /* ============================================================
    bootstrap
    ============================================================ */
-const VERSION = '20260904093223';
+const VERSION = '20260904103750';
 
 function bootStep(pct, label) {
   const b = $('#bootBar');

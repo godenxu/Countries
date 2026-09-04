@@ -135,6 +135,7 @@ class View {
 
     this.palTexA = this.makeTex(gl, buildPalette(m.meta, this.countries));
     this.palTexB = this.makeTex(gl, buildPalette(m.meta, this.countries));
+    this.markTex = this.makeTex(gl, new Uint8Array(256 * 4));
     this.setupLabels();
 
     this.fboScene = makeFBO(gl, 2, 2, true);
@@ -154,6 +155,16 @@ class View {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return t;
+  }
+
+  // re-painted whenever the user's mark groups change (add/remove a country,
+  // recolour or delete a group) -- texSubImage2D in place, no realloc needed
+  rebuildMarks(groups) {
+    const gl = this.gl;
+    const px = buildMarkPalette(this.mesh.meta, this.countries, groups);
+    gl.bindTexture(gl.TEXTURE_2D, this.markTex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    this.dirty = true;
   }
 
   setupLabels() {
@@ -752,6 +763,8 @@ class View {
     gl.uniform1i(this.pLand.u.uPal, 0);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.palTexB);
     gl.uniform1i(this.pLand.u.uPalB, 1);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.markTex);
+    gl.uniform1i(this.pLand.u.uMark, 2);
     gl.uniform1f(this.pLand.u.uPalMix, this.palMix);
     gl.uniform1f(this.pLand.u.uHover, this.hover);
     this.drawMesh(this.pLand, M, 0.0016, true);

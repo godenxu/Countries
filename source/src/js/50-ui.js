@@ -16,6 +16,8 @@ const ICON = {
   cmp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v18M7 8 3 12l4 4M17 8l4 4-4 4"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>',
   dice: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></svg>',
+  tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M11 3h6a2 2 0 0 1 2 2v6a2 2 0 0 1-.6 1.4l-8 8a2 2 0 0 1-2.8 0l-6-6a2 2 0 0 1 0-2.8l8-8A2 2 0 0 1 11 3z"/><circle cx="15.5" cy="8.5" r="1.3" fill="currentColor" stroke="none"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
 };
 
 // system-only stacks (no webfont fetches, so this stays a self-contained file)
@@ -39,6 +41,9 @@ class UIShell {
     this.roamSec = clamp(+localStorage.getItem('atlas.roamSec') || 15, 3, 120);
     this.roamTimer = null;
     this.fontKey = localStorage.getItem('atlas.font') || 'pingfang';
+    this.markGroups = this.loadMarks();
+    this.markPickId = null;
+    this.view.rebuildMarks(this.markGroups);
     this.build();
     this.wire();
     this.setFont(this.fontKey);
@@ -56,6 +61,9 @@ class UIShell {
     $('#tReset').innerHTML = ICON.reset;
     $('#tSpin').innerHTML = ICON.spin;
     $('#tRank').innerHTML = ICON.rank;
+    $('#tMarks').innerHTML = ICON.tag;
+    $('#mkClose').innerHTML = ICON.close;
+    $('#mkAdd').innerHTML = ICON.plus + '<span id="mkAddTxt"></span>';
     $('#tDice').innerHTML = ICON.dice;
     $('#pnClose').innerHTML = ICON.close;
     $('#pnFav').innerHTML = ICON.star;
@@ -173,27 +181,82 @@ class UIShell {
     $('#tSpin').onclick = () => { v.spin = !v.spin; v.spinIdle = 0; $('#tSpin').classList.toggle('on', v.spin); };
     $('#tSpin').classList.toggle('on', v.spin);
     $('#tRank').onclick = () => this.toggleRank();
+    $('#tMarks').onclick = () => this.toggleMarks();
     $('#tDice').onclick = () => this.toggleRoam();
     $('#pnClose').onclick = () => this.select(-1);
     $('#pnFav').onclick = () => this.toggleFav(this.selId);
     $('#pnCmp').onclick = () => this.startCompare();
     $('#rkClose').onclick = () => this.toggleRank(false);
+    $('#mkClose').onclick = () => this.toggleMarks(false);
+    $('#mkAdd').onclick = () => this.addMarkGroup();
+    $('#mkList').addEventListener('input', (e) => {
+      const row = e.target.closest('.mkrow'); if (!row) return;
+      const grp = this.markGroups.find((g) => g.id === row.dataset.id); if (!grp) return;
+      if (e.target.classList.contains('mkswatch')) { grp.color = e.target.value; this.view.rebuildMarks(this.markGroups); }
+      if (e.target.classList.contains('mkname')) grp.name = e.target.value;
+      this.saveMarks();
+    });
+    $('#mkList').addEventListener('click', (e) => {
+      const row = e.target.closest('.mkrow'); if (!row) return;
+      const id = row.dataset.id;
+      if (e.target.closest('.mkpick')) this.markPickId === id ? this.stopMarkPick() : this.startMarkPick(id);
+      else if (e.target.closest('.mkdel')) this.deleteMarkGroup(id);
+    });
     $('#cmpClose').onclick = () => $('#cmp').classList.remove('open');
     $('#pnTabs').onclick = (e) => {
       const b = e.target.closest('.ptab'); if (!b) return;
       this.tab = b.dataset.tab;
       $$('.ptab').forEach((x) => x.classList.toggle('on', x.dataset.tab === this.tab));
       this.renderBody();
+      b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     };
+    // desktop mice send vertical wheel deltas even over a horizontally
+    // scrolling strip -- remap so the tab row scrolls the way a trackpad
+    // swipe would, without requiring shift+scroll
+    const pnTabsEl = $('#pnTabs');
+    pnTabsEl.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      pnTabsEl.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
+    const syncTabFade = () => {
+      const atEnd = pnTabsEl.scrollWidth - pnTabsEl.clientWidth - pnTabsEl.scrollLeft < 4;
+      pnTabsEl.parentElement.classList.toggle('at-end', atEnd);
+    };
+    pnTabsEl.addEventListener('scroll', syncTabFade, { passive: true });
+    syncTabFade();
     $('#themeBar').onclick = (e) => {
       const b = e.target.closest('.tchip'); if (!b) return;
       this.setTheme(b.dataset.k || null);
     };
-    $('#pnHead').addEventListener('click', (e) => {
-      if (window.innerWidth <= 720 && !e.target.closest('button')) {
-        $('#panel').classList.toggle('full');
-        this.updateShift();
-      }
+    // mobile bottom-sheet: dragging the header (or its grab handle) freely
+    // resizes the panel via --peek; a drag too small to count (a tap) falls
+    // back to the old shortcut of jumping between default peek and near-full
+    const panelEl = $('#panel'), pnHead = $('#pnHead');
+    const peekDefault = () => Math.min(window.innerHeight * 0.5, 460);
+    const peekMax = () => window.innerHeight * 0.92;
+    const peekMin = 130;
+    const curPeek = () => parseFloat(panelEl.style.getPropertyValue('--peek')) || peekDefault();
+    const setPeek = (px) => panelEl.style.setProperty('--peek', clamp(px, peekMin, peekMax()) + 'px');
+    let dragStartY = 0, dragStartPeek = 0, dragMoved = 0, dragging = false;
+    const onMove = (e) => {
+      const dy = dragStartY - e.clientY;
+      dragMoved = Math.max(dragMoved, Math.abs(dy));
+      if (!dragging && dragMoved > 6) { dragging = true; panelEl.classList.add('dragging'); }
+      if (dragging) { setPeek(dragStartPeek + dy); this.updateShift(); }
+    };
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      panelEl.classList.remove('dragging');
+      if (!dragging) { setPeek(curPeek() > peekMax() * 0.7 ? peekDefault() : peekMax()); this.updateShift(); }
+      dragging = false;
+    };
+    pnHead.addEventListener('pointerdown', (e) => {
+      if (window.innerWidth > 720 || e.target.closest('button')) return;
+      dragStartY = e.clientY; dragStartPeek = curPeek(); dragMoved = 0; dragging = false;
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
     });
 
     const sb = $('#searchBox');
@@ -212,7 +275,8 @@ class UIShell {
       if (e.key === '/') { e.preventDefault(); sb.focus(); }
       if (e.key === 'Escape') {
         if (this.cmpPick) this.cancelCompare();
-        this.select(-1); $('#cmp').classList.remove('open'); $('#settings').classList.remove('open');
+        if (this.markPickId != null) this.stopMarkPick();
+        this.select(-1); $('#cmp').classList.remove('open'); $('#settings').classList.remove('open'); $('#marks').classList.remove('open');
       }
       if (e.key === ' ') { e.preventDefault(); $('#tSpin').click(); }
       if (k === 'm') this.setMode(v.cam.morph > 0.5 ? 0 : 1);
@@ -228,6 +292,7 @@ class UIShell {
       const id = v.pickAt(x, y);
       const g = v.screenToGeo(x, y);
       if (g) v.addRipple(g[0], g[1]);
+      if (this.markPickId != null) { if (id >= 0) this.toggleMarkCountry(this.markPickId, id); return; }
       if (this.cmpPick && id >= 0) { this.finishCompare(id); return; }
       this.select(id);
       if (id >= 0) this.flyToCountry(id);
@@ -252,7 +317,8 @@ class UIShell {
       const pw = $('#panel').getBoundingClientRect().width;
       return { w: Math.max(160, W - pw), h: H, side: 'x', amount: pw };
     }
-    const ph = $('#panel').classList.contains('full') ? H * 0.88 : Math.min(H * 0.5, 460);
+    const peekVar = parseFloat($('#panel').style.getPropertyValue('--peek'));
+    const ph = peekVar || Math.min(H * 0.5, 460);
     return { w: W, h: Math.max(160, H - ph), side: 'y', amount: ph };
   }
 
@@ -329,10 +395,13 @@ class UIShell {
     $('#rkTitle').textContent = T('ranking');
     $('#cmpTitle').textContent = T('compare');
     $('#setTitle').textContent = T('settings');
+    $('#mkTitle').textContent = T('markTitle');
+    $('#mkAddTxt').textContent = T('markAddGroup');
     this.buildSettings();
     this.renderLegend();
     if (this.selId >= 0) this.renderPanel(this.selId);
     if ($('#rank').classList.contains('open')) this.renderRank();
+    if ($('#marks').classList.contains('open')) this.renderMarks();
   }
 
   refreshAll() {
@@ -412,6 +481,92 @@ class UIShell {
       row.onclick = () => { this.select(i); this.flyToCountry(i); };
       list.appendChild(row);
     });
+  }
+
+  /* ---------------- custom country marks (e.g. org membership) ---------------- */
+  loadMarks() {
+    try {
+      const raw = JSON.parse(localStorage.getItem('atlas.marks') || '[]');
+      return Array.isArray(raw) ? raw.map((g) => ({ id: g.id, name: g.name || '', color: g.color || '#46e0b8', keys: Array.isArray(g.keys) ? g.keys : [] })) : [];
+    } catch { return []; }
+  }
+  saveMarks() { localStorage.setItem('atlas.marks', JSON.stringify(this.markGroups)); }
+
+  toggleMarks(force) {
+    const n = $('#marks');
+    const open = force != null ? force : !n.classList.contains('open');
+    n.classList.toggle('open', open);
+    $('#tMarks').classList.toggle('on', open);
+    if (open) this.renderMarks(); else this.stopMarkPick();
+  }
+
+  addMarkGroup() {
+    const palette = ['#46e0b8', '#f2b552', '#ff6f5e', '#7a9cff', '#c58fff', '#5fe08a', '#ffcf5c', '#4ecbe0'];
+    const grp = {
+      id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name: T('markGroupDefault') + (this.markGroups.length + 1),
+      color: palette[this.markGroups.length % palette.length],
+      keys: [],
+    };
+    this.markGroups.push(grp);
+    this.saveMarks();
+    this.renderMarks();
+    this.startMarkPick(grp.id);
+  }
+
+  deleteMarkGroup(id) {
+    this.markGroups = this.markGroups.filter((g) => g.id !== id);
+    if (this.markPickId === id) this.markPickId = null;
+    this.saveMarks();
+    this.view.rebuildMarks(this.markGroups);
+    this.renderMarks();
+  }
+
+  toggleMarkCountry(groupId, idx) {
+    const grp = this.markGroups.find((g) => g.id === groupId);
+    if (!grp) return;
+    const key = DATA.countries[idx].k;
+    const at = grp.keys.indexOf(key);
+    if (at >= 0) grp.keys.splice(at, 1); else grp.keys.push(key);
+    this.saveMarks();
+    this.view.rebuildMarks(this.markGroups);
+    this.renderMarks();
+  }
+
+  startMarkPick(id) {
+    this.markPickId = id;
+    this.renderMarks();
+    this.toast(T('markPickHint'));
+  }
+  stopMarkPick() {
+    if (this.markPickId == null) return;
+    this.markPickId = null;
+    this.renderMarks();
+  }
+
+  renderMarks() {
+    $('#mkSub').textContent = T('markSub');
+    const list = $('#mkList');
+    const focused = document.activeElement && document.activeElement.closest && document.activeElement.closest('#mkList');
+    if (focused) return; // don't yank focus out from under an in-progress name edit
+    list.innerHTML = '';
+    if (!this.markGroups.length) { list.appendChild(el('div', 'soon', T('markEmpty'))); return; }
+    for (const grp of this.markGroups) {
+      const row = el('div', 'mkrow' + (this.markPickId === grp.id ? ' picking' : ''));
+      row.dataset.id = grp.id;
+      const sw = document.createElement('input');
+      sw.type = 'color'; sw.className = 'mkswatch'; sw.value = grp.color;
+      row.appendChild(sw);
+      const nm = document.createElement('input');
+      nm.type = 'text'; nm.className = 'mkname'; nm.value = grp.name; nm.maxLength = 24;
+      row.appendChild(nm);
+      row.appendChild(el('span', 'mkcount', String(grp.keys.length)));
+      const pickBtn = el('button', 'mkpick' + (this.markPickId === grp.id ? ' on' : ''), this.markPickId === grp.id ? T('markDone') : T('markPick'));
+      row.appendChild(pickBtn);
+      const delBtn = el('button', 'mkdel'); delBtn.innerHTML = ICON.trash;
+      row.appendChild(delBtn);
+      list.appendChild(row);
+    }
   }
 
   randomPick() {
