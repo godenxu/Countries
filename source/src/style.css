@@ -292,7 +292,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 #legend .lgtitle { color: var(--ink); font-size: 11px; letter-spacing: .04em; margin-bottom: 6px; }
 #legend .ramp {
   height: 8px; border-radius: 4px; margin-bottom: 4px;
-  background: linear-gradient(90deg, #131a21, #192e32, #214542, #475f43, #7a6d43, #8a5843);
+  background: linear-gradient(90deg, #1b377a, #167a8a, #42a35f, #c9ba32, #e47b2b, #ca3637);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
 }
 #legend .lgscale { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--muted-dim); }
@@ -448,7 +448,19 @@ i.live { color: var(--aurora); font-size: 8px; margin-left: 5px; vertical-align:
 .cityrow .capbadge {
   font-size: 8.5px; padding: 1.5px 5px; border-radius: 4px; letter-spacing: .04em;
   background: rgba(242,181,82,.16); border: 1px solid rgba(242,181,82,.35); color: var(--gold);
+  white-space: nowrap;
 }
+.cities.rich .cityrow { align-items: center; padding: 8px 6px; gap: 10px; }
+.cities.rich .ccrank {
+  min-width: 20px; text-align: center; font-size: 10px; color: var(--muted-dim);
+  font-variant-numeric: tabular-nums;
+}
+.cities.rich .ccname { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.cities.rich .ccname .cn, .cities.rich .ccname .ce { display: block; }
+.cities.rich .ccmeta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.cities.rich .ccmeta .cp { font-variant-numeric: tabular-nums; }
+.cities.rich .ccmeta .cd { font-size: 9px; color: var(--muted-dim); font-variant-numeric: tabular-nums; }
+.emptynote { padding: 10px 4px; font-size: 12px; color: var(--muted-dim); }
 
 @media (max-width: 1180px) {
   #readout { bottom: calc(58px + var(--sab)); }

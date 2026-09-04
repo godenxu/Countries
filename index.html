@@ -307,7 +307,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 #legend .lgtitle { color: var(--ink); font-size: 11px; letter-spacing: .04em; margin-bottom: 6px; }
 #legend .ramp {
   height: 8px; border-radius: 4px; margin-bottom: 4px;
-  background: linear-gradient(90deg, #131a21, #192e32, #214542, #475f43, #7a6d43, #8a5843);
+  background: linear-gradient(90deg, #1b377a, #167a8a, #42a35f, #c9ba32, #e47b2b, #ca3637);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
 }
 #legend .lgscale { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--muted-dim); }
@@ -463,7 +463,19 @@ i.live { color: var(--aurora); font-size: 8px; margin-left: 5px; vertical-align:
 .cityrow .capbadge {
   font-size: 8.5px; padding: 1.5px 5px; border-radius: 4px; letter-spacing: .04em;
   background: rgba(242,181,82,.16); border: 1px solid rgba(242,181,82,.35); color: var(--gold);
+  white-space: nowrap;
 }
+.cities.rich .cityrow { align-items: center; padding: 8px 6px; gap: 10px; }
+.cities.rich .ccrank {
+  min-width: 20px; text-align: center; font-size: 10px; color: var(--muted-dim);
+  font-variant-numeric: tabular-nums;
+}
+.cities.rich .ccname { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.cities.rich .ccname .cn, .cities.rich .ccname .ce { display: block; }
+.cities.rich .ccmeta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.cities.rich .ccmeta .cp { font-variant-numeric: tabular-nums; }
+.cities.rich .ccmeta .cd { font-size: 9px; color: var(--muted-dim); font-variant-numeric: tabular-nums; }
+.emptynote { padding: 10px 4px; font-size: 12px; color: var(--muted-dim); }
 
 @media (max-width: 1180px) {
   #readout { bottom: calc(58px + var(--sab)); }
@@ -637,13 +649,14 @@ function unpack(buf) {
 /* ---------------- i18n ---------------- */
 const I18N = {
   zh: {
-    brand: '寰宇', tagline: '世界国家信息大全', search: '搜索国家 / 拼音 / 代码…', noResult: '无匹配结果',
+    brand: '寰宇', tagline: '世界国家信息大全', search: '搜索国家 / 城市 / 拼音 / 代码…', noResult: '无匹配结果',
+    noCityData: '暂无城市数据收录',
     globe: '地球仪', map: '平面图', spin: '自转', reset: '复位', zoomIn: '放大', zoomOut: '缩小',
     fullscreen: '全屏', settings: '视觉设置', ranking: '排行榜', random: '随机漫游', favorite: '收藏',
     compare: '对比', lang: '语言',
     booting: '系统初始化', bootGeo: '解析疆域数据', bootMesh: '构建球面网格', bootGL: '启动渲染引擎',
     bootLabel: '生成地名图集', bootReady: '就绪',
-    overview: '概览', geography: '地理', people: '人口', economy: '经济', politics: '政治',
+    overview: '概览', geography: '地理', cities: '城市', people: '人口', economy: '经济', politics: '政治',
     military: '军事', culture: '文化', envtech: '环境科技', sources: '来源',
     kPop: '人口', kArea: '面积', kDens: '人口密度', kCapital: '首都', kRegion: '地区', capital: '首都',
     kSubregion: '次区域', kOfficial: '官方全称', kCurrency: '货币', kLanguage: '语言',
@@ -685,13 +698,14 @@ const I18N = {
     year: '年', age: '岁', celsius: '℃', meter: '米',
   },
   en: {
-    brand: 'ATLAS', tagline: 'World Country Almanac', search: 'Search country / code…', noResult: 'No match',
+    brand: 'ATLAS', tagline: 'World Country Almanac', search: 'Search country / city / code…', noResult: 'No match',
+    noCityData: 'No city data catalogued yet',
     globe: 'Globe', map: 'Map', spin: 'Spin', reset: 'Reset', zoomIn: 'Zoom in', zoomOut: 'Zoom out',
     fullscreen: 'Fullscreen', settings: 'Visual settings', ranking: 'Leaderboard', random: 'Surprise me',
     favorite: 'Favourite', compare: 'Compare', lang: 'Language',
     booting: 'Initialising', bootGeo: 'Decoding boundaries', bootMesh: 'Building sphere mesh',
     bootGL: 'Starting renderer', bootLabel: 'Rendering place names', bootReady: 'Ready',
-    overview: 'Overview', geography: 'Geography', people: 'People', economy: 'Economy', politics: 'Politics',
+    overview: 'Overview', geography: 'Geography', cities: 'Cities', people: 'People', economy: 'Economy', politics: 'Politics',
     military: 'Military', culture: 'Culture', envtech: 'Environment', sources: 'Sources',
     kPop: 'Population', kArea: 'Area', kDens: 'Density', kCapital: 'Capital', kRegion: 'Region', capital: 'Capital',
     kSubregion: 'Subregion', kOfficial: 'Official name', kCurrency: 'Currency', kLanguage: 'Languages',
@@ -1220,15 +1234,19 @@ void main(){
   float themed = smoothstep(0.4, 0.6, uPalMix);
   float g = vn2(vLL*min(uNight*0.35, 2.2))*0.6 + vn2(vLL*min(uNight*0.9, 6.0))*0.4;
   vec3 c = base * (0.965 + g*0.07*(1.0-themed));
-  // terminator warmth on the lit side of the boundary
+  // terminator warmth on the lit side of the boundary -- a data theme should
+  // read the same regardless of where the globe's day/night line happens to
+  // fall, so this glare is switched off entirely once a theme is active
   float dusk = exp(-abs(ndl)*9.0) * (1.0-uMorph*0.25);
-  c = mix(c, c*vec3(1.35, 0.92, 0.62), dusk*0.55*(1.0-0.7*themed));
-  vec3 nightC = mix(base*0.55 + vec3(0.010, 0.016, 0.026), base*0.30 + vec3(0.024, 0.038, 0.062), 1.0-themed);
+  c = mix(c, c*vec3(1.35, 0.92, 0.62), dusk*0.55*(1.0-themed));
+  // themed night-side stays close to full brightness (only a mild dip) so the
+  // choropleth colour itself -- which is meant to read vivid -- never goes dark
+  vec3 nightC = mix(base*0.82 + vec3(0.008, 0.013, 0.020), base*0.30 + vec3(0.024, 0.038, 0.062), 1.0-themed);
   // settlement glow, weighted by the country's population density
   float ns = vn2(vLL*uNight*0.45)*0.62 + vn2(vLL*uNight*1.35 + 11.7)*0.38;
   float lampMask = smoothstep(0.88 - 0.34*dens, 1.0, ns) * (1.0-themed);
   float lamp = lampMask * (1.0 - day);
-  c = mix(nightC, c*mix(1.05, 0.98, themed), day);
+  c = mix(nightC, c*mix(1.05, 1.0, themed), day);
   c += vec3(1.0, 0.72, 0.38) * lamp * 0.85 * (0.86 + 0.14*sin(uTime*1.8 + ns*30.0));
   // scanning sweep
   float sweepLon = mod(vLL.x - uSweep + 540.0, 360.0) - 180.0;
@@ -1586,6 +1604,39 @@ const REGION_COLOR = {
   Oceania: [0.196, 0.278, 0.231], Antarctic: [0.227, 0.278, 0.325], '': [0.20, 0.25, 0.27],
 };
 
+function hsl2rgb(h, s, l) {
+  h = (((h % 360) + 360) % 360) / 360;
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const f = (t) => {
+    t = ((t % 1) + 1) % 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  return [f(h + 1 / 3), f(h), f(h - 1 / 3)];
+}
+
+// every UN subregion gets its own hue so a continent doesn't collapse into
+// one indistinguishable colour family -- neighbours within a region (e.g.
+// Western vs. Eastern Europe) still read as clearly different groups
+const SUBREGION_HSL = {
+  'Northern Africa': [32, 0.42, 0.30], 'Sub-Saharan Africa': [18, 0.38, 0.28],
+  'Western Africa': [12, 0.46, 0.30], 'Middle Africa': [50, 0.40, 0.28],
+  'Eastern Africa': [355, 0.36, 0.30], 'Southern Africa': [300, 0.28, 0.30],
+  'Northern America': [205, 0.34, 0.30], 'Central America': [140, 0.38, 0.28],
+  'South America': [95, 0.38, 0.28], 'Caribbean': [175, 0.42, 0.30],
+  'Central Asia': [265, 0.30, 0.32], 'Eastern Asia': [128, 0.34, 0.28],
+  'South-Eastern Asia': [70, 0.40, 0.28], 'Southern Asia': [40, 0.44, 0.30],
+  'Western Asia': [8, 0.40, 0.32], 'Eastern Europe': [235, 0.32, 0.32],
+  'Northern Europe': [210, 0.36, 0.34], 'Southern Europe': [340, 0.28, 0.34],
+  'Western Europe': [190, 0.30, 0.32], 'Central Europe': [280, 0.26, 0.32],
+  'Southeast Europe': [315, 0.28, 0.32],
+  'Australia and New Zealand': [165, 0.34, 0.30], 'Melanesia': [150, 0.38, 0.30],
+  'Micronesia': [185, 0.38, 0.32], 'Polynesia': [200, 0.40, 0.34],
+};
+
 // alpha channel carries normalised log population density -> night-light intensity
 function densityAlpha(rec) {
   const d = rec && rec.dens;
@@ -1598,7 +1649,9 @@ function buildPalette(meta, countries) {
   const px = new Uint8Array(256 * 4);
   for (let i = 0; i < meta.length && i < 256; i++) {
     const rec = countries[i];
-    const base = REGION_COLOR[(rec && rec.reg.en) || ''] || REGION_COLOR[''];
+    const sub = rec && rec.sub && rec.sub.en;
+    const hsl = sub && SUBREGION_HSL[sub];
+    const base = hsl ? hsl2rgb(hsl[0], hsl[1], hsl[2]) : (REGION_COLOR[(rec && rec.reg.en) || ''] || REGION_COLOR['']);
     let h = 0; const k = meta[i].key;
     for (let c = 0; c < k.length; c++) h = (h * 31 + k.charCodeAt(c)) & 0xffff;
     const j = ((h % 100) / 100 - 0.5) * 0.20;
@@ -1611,13 +1664,14 @@ function buildPalette(meta, countries) {
   return px;
 }
 
-/* sequential ramp for the thematic layer: deep teal -> aurora -> gold -> coral */
-// A muted, low-chroma sequential ramp — deliberately far short of fully
-// saturated so 200-odd adjacent polygons read as one calm gradient rather
-// than a lit-up patchwork. Slate -> teal -> sage -> muted gold -> terracotta.
+/* sequential ramp for the thematic layer: indigo -> teal -> green -> gold -> orange -> red */
+// The colour itself is allowed to be vivid and clearly stepped -- that's
+// what makes 200-odd polygons legible as a ranked scale -- the glare that
+// made it unreadable was the natural-terrain *lighting* stacked on top
+// (handled above via `themed`), not the palette's own saturation.
 const RAMP = [
-  [0.075, 0.098, 0.130], [0.098, 0.180, 0.196], [0.129, 0.267, 0.259],
-  [0.278, 0.373, 0.263], [0.478, 0.427, 0.263], [0.541, 0.345, 0.263],
+  [0.106, 0.216, 0.478], [0.086, 0.478, 0.541], [0.259, 0.639, 0.373],
+  [0.788, 0.729, 0.196], [0.894, 0.482, 0.169], [0.792, 0.212, 0.216],
 ];
 function rampColor(t) {
   t = clamp(t, 0, 1) * (RAMP.length - 1);
@@ -2746,7 +2800,7 @@ class View {
 /* ============================================================
    indicator access, ranking, thematic scales, online refresh
    ============================================================ */
-const DATA = { countries: [], indMeta: [], orgMeta: [], seriesYears: [], byKey: {}, ranks: {}, wb: null };
+const DATA = { countries: [], indMeta: [], orgMeta: [], seriesYears: [], byKey: {}, ranks: {}, wb: null, cities: [] };
 
 function initData(bundle) {
   DATA.countries = bundle.countries;
@@ -2754,6 +2808,13 @@ function initData(bundle) {
   DATA.orgMeta = bundle.orgMeta;
   DATA.seriesYears = bundle.seriesYears;
   DATA.countries.forEach((c, i) => { DATA.byKey[c.k] = i; });
+  // flat city index for search: each entry keeps a back-reference (ci) to
+  // its host country's index in DATA.countries
+  DATA.cities = [];
+  DATA.countries.forEach((c, i) => {
+    if (!c.cities) return;
+    for (const city of c.cities) DATA.cities.push(Object.assign({ ci: i }, city));
+  });
   loadCache();
   computeRanks();
 }
@@ -2915,7 +2976,7 @@ async function refreshOnline(onProgress) {
 /* ============================================================
    country dossier — nine modules rendered into the side panel
    ============================================================ */
-const PANEL_TABS = ['overview', 'geography', 'people', 'economy', 'politics', 'military', 'culture', 'envtech', 'sources'];
+const PANEL_TABS = ['overview', 'geography', 'cities', 'people', 'economy', 'politics', 'military', 'culture', 'envtech', 'sources'];
 
 const UI = {
   sect(host, title) {
@@ -3087,24 +3148,38 @@ function renderDossier(body, i, tab, onPick, onCity) {
     UI.row(s, T('kLandlocked'), c.landlocked ? T('yes') : T('no'));
     UI.row(s, T('kNeighbors'), String(c.borders.length));
     UI.row(s, T('kTz'), c.tz ? 'UTC ' + c.tz : NA);
+    const s2 = UI.sect(body, T('sectEnv'));
+    for (const k of ['forest', 'co2', 'renew']) UI.metric(s2, c, k, i);
+  }
+
+  if (tab === 'cities') {
+    const sc = UI.sect(body, T('sectCities'));
     if (c.cities && c.cities.length) {
-      const sc = UI.sect(body, T('sectCities'));
-      const box = el('div', 'cities');
+      const box = el('div', 'cities rich');
+      // rank badges reflect the curated population order, independent of the
+      // capital-first display order below (a capital isn't always its
+      // country's largest city, so the two orders can legitimately differ)
+      const rankOf = new Map(c.cities.map((city, idx) => [city, idx + 1]));
       const ordered = c.cities.slice().sort((a, b) => (b.isCap ? 1 : 0) - (a.isCap ? 1 : 0));
       for (const city of ordered) {
         const row = el('div', 'cityrow' + (city.isCap ? ' cap' : ''));
-        if (city.isCap) row.appendChild(el('span', 'capstar', '★'));
-        row.appendChild(el('span', 'cn', zh ? city.zh : city.en));
-        if (city.isCap) row.appendChild(el('span', 'capbadge', T('capital')));
-        row.appendChild(el('span', 'ce', zh ? city.en : city.zh));
-        row.appendChild(el('span', 'cp', city.pop ? fmtBig(city.pop).v + fmtBig(city.pop).u : ''));
+        row.appendChild(el('span', 'ccrank', '#' + rankOf.get(city)));
+        const nameWrap = el('div', 'ccname');
+        nameWrap.appendChild(el('span', 'cn', zh ? city.zh : city.en));
+        nameWrap.appendChild(el('span', 'ce', zh ? city.en : city.zh));
+        row.appendChild(nameWrap);
+        const metaWrap = el('div', 'ccmeta');
+        if (city.pop) metaWrap.appendChild(el('span', 'cp', fmtBig(city.pop).v + fmtBig(city.pop).u));
+        if (city.lat != null && city.lon != null) metaWrap.appendChild(el('span', 'cd', fmtCoord(city.lon, city.lat)));
+        row.appendChild(metaWrap);
+        if (city.isCap) row.appendChild(el('span', 'capbadge', '★ ' + T('capital')));
         row.onclick = () => onCity && onCity(city.lat, city.lon, zh ? city.zh : city.en);
         box.appendChild(row);
       }
       sc.appendChild(box);
+    } else {
+      sc.appendChild(el('div', 'emptynote', T('noCityData')));
     }
-    const s2 = UI.sect(body, T('sectEnv'));
-    for (const k of ['forest', 'co2', 'renew']) UI.metric(s2, c, k, i);
   }
 
   if (tab === 'people') {
@@ -3747,21 +3822,48 @@ class UIShell {
         if (idx === 0) { score = Math.max(score, 100 - h); break; }
         if (idx > 0) score = Math.max(score, 50 - h);
       }
-      if (score > 0) hits.push([score + Math.log10((c.pop || 1) + 10), i]);
+      if (score > 0) hits.push({ kind: 'country', i, score: score + Math.log10((c.pop || 1) + 10) });
     }
-    hits.sort((a, b) => b[0] - a[0]);
+    for (const city of DATA.cities) {
+      const hay = [city.zh || '', city.en.toLowerCase()];
+      let score = -1;
+      for (let h = 0; h < hay.length; h++) {
+        const idx = hay[h].indexOf(q);
+        if (idx === 0) { score = Math.max(score, 90 - h); break; }
+        if (idx > 0) score = Math.max(score, 40 - h);
+      }
+      // cities rank below a country match of equal quality, so typing e.g.
+      // "France" doesn't bury the country itself under its own cities
+      if (score > 0) hits.push({ kind: 'city', city, score: score + Math.log10((city.pop || 1) + 10) - 6 });
+    }
+    hits.sort((a, b) => b.score - a.score);
     box.innerHTML = '';
     if (!hits.length) { box.appendChild(el('div', 'sres-item', T('noResult'))); box.classList.remove('hide'); return; }
-    for (const [, i] of hits.slice(0, 12)) {
-      const c = DATA.countries[i];
+    for (const hit of hits.slice(0, 12)) {
       const row = el('div', 'sres-item');
-      row.appendChild(el('span', 'fg', c.flag || '🏳'));
-      row.appendChild(el('span', 'nm', LANG === 'zh' ? c.zh : c.en));
-      row.appendChild(el('span', 'sub', LANG === 'zh' ? c.en : c.zh));
-      row.onclick = () => {
-        $('#searchBox').value = ''; box.classList.add('hide'); $('#searchBox').blur();
-        this.select(i); this.flyToCountry(i);
-      };
+      if (hit.kind === 'country') {
+        const c = DATA.countries[hit.i];
+        row.appendChild(el('span', 'fg', c.flag || '🏳'));
+        row.appendChild(el('span', 'nm', LANG === 'zh' ? c.zh : c.en));
+        row.appendChild(el('span', 'sub', LANG === 'zh' ? c.en : c.zh));
+        row.onclick = () => {
+          $('#searchBox').value = ''; box.classList.add('hide'); $('#searchBox').blur();
+          this.select(hit.i); this.flyToCountry(hit.i);
+        };
+      } else {
+        const city = hit.city, c = DATA.countries[city.ci];
+        row.appendChild(el('span', 'fg', city.isCap ? '★' : '🏙'));
+        row.appendChild(el('span', 'nm', LANG === 'zh' ? city.zh : city.en));
+        row.appendChild(el('span', 'sub', (LANG === 'zh' ? c.zh : c.en) + ' · ' + (LANG === 'zh' ? city.en : (city.zh || city.en))));
+        row.onclick = () => {
+          $('#searchBox').value = ''; box.classList.add('hide'); $('#searchBox').blur();
+          this.select(city.ci);
+          this.tab = 'cities';
+          $$('.ptab').forEach((x) => x.classList.toggle('on', x.dataset.tab === 'cities'));
+          this.renderBody();
+          this.view.flyTo(city.lon, city.lat, this.view.cam.morph > 0.5 ? 0.16 : 1.15, 900);
+        };
+      }
       box.appendChild(row);
     }
     box.classList.remove('hide');
@@ -3851,7 +3953,7 @@ class UIShell {
 /* ============================================================
    bootstrap
    ============================================================ */
-const VERSION = '20260903181556';
+const VERSION = '20260904093223';
 
 function bootStep(pct, label) {
   const b = $('#bootBar');

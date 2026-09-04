@@ -496,21 +496,48 @@ class UIShell {
         if (idx === 0) { score = Math.max(score, 100 - h); break; }
         if (idx > 0) score = Math.max(score, 50 - h);
       }
-      if (score > 0) hits.push([score + Math.log10((c.pop || 1) + 10), i]);
+      if (score > 0) hits.push({ kind: 'country', i, score: score + Math.log10((c.pop || 1) + 10) });
     }
-    hits.sort((a, b) => b[0] - a[0]);
+    for (const city of DATA.cities) {
+      const hay = [city.zh || '', city.en.toLowerCase()];
+      let score = -1;
+      for (let h = 0; h < hay.length; h++) {
+        const idx = hay[h].indexOf(q);
+        if (idx === 0) { score = Math.max(score, 90 - h); break; }
+        if (idx > 0) score = Math.max(score, 40 - h);
+      }
+      // cities rank below a country match of equal quality, so typing e.g.
+      // "France" doesn't bury the country itself under its own cities
+      if (score > 0) hits.push({ kind: 'city', city, score: score + Math.log10((city.pop || 1) + 10) - 6 });
+    }
+    hits.sort((a, b) => b.score - a.score);
     box.innerHTML = '';
     if (!hits.length) { box.appendChild(el('div', 'sres-item', T('noResult'))); box.classList.remove('hide'); return; }
-    for (const [, i] of hits.slice(0, 12)) {
-      const c = DATA.countries[i];
+    for (const hit of hits.slice(0, 12)) {
       const row = el('div', 'sres-item');
-      row.appendChild(el('span', 'fg', c.flag || '🏳'));
-      row.appendChild(el('span', 'nm', LANG === 'zh' ? c.zh : c.en));
-      row.appendChild(el('span', 'sub', LANG === 'zh' ? c.en : c.zh));
-      row.onclick = () => {
-        $('#searchBox').value = ''; box.classList.add('hide'); $('#searchBox').blur();
-        this.select(i); this.flyToCountry(i);
-      };
+      if (hit.kind === 'country') {
+        const c = DATA.countries[hit.i];
+        row.appendChild(el('span', 'fg', c.flag || '🏳'));
+        row.appendChild(el('span', 'nm', LANG === 'zh' ? c.zh : c.en));
+        row.appendChild(el('span', 'sub', LANG === 'zh' ? c.en : c.zh));
+        row.onclick = () => {
+          $('#searchBox').value = ''; box.classList.add('hide'); $('#searchBox').blur();
+          this.select(hit.i); this.flyToCountry(hit.i);
+        };
+      } else {
+        const city = hit.city, c = DATA.countries[city.ci];
+        row.appendChild(el('span', 'fg', city.isCap ? '★' : '🏙'));
+        row.appendChild(el('span', 'nm', LANG === 'zh' ? city.zh : city.en));
+        row.appendChild(el('span', 'sub', (LANG === 'zh' ? c.zh : c.en) + ' · ' + (LANG === 'zh' ? city.en : (city.zh || city.en))));
+        row.onclick = () => {
+          $('#searchBox').value = ''; box.classList.add('hide'); $('#searchBox').blur();
+          this.select(city.ci);
+          this.tab = 'cities';
+          $$('.ptab').forEach((x) => x.classList.toggle('on', x.dataset.tab === 'cities'));
+          this.renderBody();
+          this.view.flyTo(city.lon, city.lat, this.view.cam.morph > 0.5 ? 0.16 : 1.15, 900);
+        };
+      }
       box.appendChild(row);
     }
     box.classList.remove('hide');

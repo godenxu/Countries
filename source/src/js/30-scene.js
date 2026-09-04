@@ -111,15 +111,19 @@ void main(){
   float themed = smoothstep(0.4, 0.6, uPalMix);
   float g = vn2(vLL*min(uNight*0.35, 2.2))*0.6 + vn2(vLL*min(uNight*0.9, 6.0))*0.4;
   vec3 c = base * (0.965 + g*0.07*(1.0-themed));
-  // terminator warmth on the lit side of the boundary
+  // terminator warmth on the lit side of the boundary -- a data theme should
+  // read the same regardless of where the globe's day/night line happens to
+  // fall, so this glare is switched off entirely once a theme is active
   float dusk = exp(-abs(ndl)*9.0) * (1.0-uMorph*0.25);
-  c = mix(c, c*vec3(1.35, 0.92, 0.62), dusk*0.55*(1.0-0.7*themed));
-  vec3 nightC = mix(base*0.55 + vec3(0.010, 0.016, 0.026), base*0.30 + vec3(0.024, 0.038, 0.062), 1.0-themed);
+  c = mix(c, c*vec3(1.35, 0.92, 0.62), dusk*0.55*(1.0-themed));
+  // themed night-side stays close to full brightness (only a mild dip) so the
+  // choropleth colour itself -- which is meant to read vivid -- never goes dark
+  vec3 nightC = mix(base*0.82 + vec3(0.008, 0.013, 0.020), base*0.30 + vec3(0.024, 0.038, 0.062), 1.0-themed);
   // settlement glow, weighted by the country's population density
   float ns = vn2(vLL*uNight*0.45)*0.62 + vn2(vLL*uNight*1.35 + 11.7)*0.38;
   float lampMask = smoothstep(0.88 - 0.34*dens, 1.0, ns) * (1.0-themed);
   float lamp = lampMask * (1.0 - day);
-  c = mix(nightC, c*mix(1.05, 0.98, themed), day);
+  c = mix(nightC, c*mix(1.05, 1.0, themed), day);
   c += vec3(1.0, 0.72, 0.38) * lamp * 0.85 * (0.86 + 0.14*sin(uTime*1.8 + ns*30.0));
   // scanning sweep
   float sweepLon = mod(vLL.x - uSweep + 540.0, 360.0) - 180.0;
@@ -477,6 +481,39 @@ const REGION_COLOR = {
   Oceania: [0.196, 0.278, 0.231], Antarctic: [0.227, 0.278, 0.325], '': [0.20, 0.25, 0.27],
 };
 
+function hsl2rgb(h, s, l) {
+  h = (((h % 360) + 360) % 360) / 360;
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const f = (t) => {
+    t = ((t % 1) + 1) % 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  return [f(h + 1 / 3), f(h), f(h - 1 / 3)];
+}
+
+// every UN subregion gets its own hue so a continent doesn't collapse into
+// one indistinguishable colour family -- neighbours within a region (e.g.
+// Western vs. Eastern Europe) still read as clearly different groups
+const SUBREGION_HSL = {
+  'Northern Africa': [32, 0.42, 0.30], 'Sub-Saharan Africa': [18, 0.38, 0.28],
+  'Western Africa': [12, 0.46, 0.30], 'Middle Africa': [50, 0.40, 0.28],
+  'Eastern Africa': [355, 0.36, 0.30], 'Southern Africa': [300, 0.28, 0.30],
+  'Northern America': [205, 0.34, 0.30], 'Central America': [140, 0.38, 0.28],
+  'South America': [95, 0.38, 0.28], 'Caribbean': [175, 0.42, 0.30],
+  'Central Asia': [265, 0.30, 0.32], 'Eastern Asia': [128, 0.34, 0.28],
+  'South-Eastern Asia': [70, 0.40, 0.28], 'Southern Asia': [40, 0.44, 0.30],
+  'Western Asia': [8, 0.40, 0.32], 'Eastern Europe': [235, 0.32, 0.32],
+  'Northern Europe': [210, 0.36, 0.34], 'Southern Europe': [340, 0.28, 0.34],
+  'Western Europe': [190, 0.30, 0.32], 'Central Europe': [280, 0.26, 0.32],
+  'Southeast Europe': [315, 0.28, 0.32],
+  'Australia and New Zealand': [165, 0.34, 0.30], 'Melanesia': [150, 0.38, 0.30],
+  'Micronesia': [185, 0.38, 0.32], 'Polynesia': [200, 0.40, 0.34],
+};
+
 // alpha channel carries normalised log population density -> night-light intensity
 function densityAlpha(rec) {
   const d = rec && rec.dens;
@@ -489,7 +526,9 @@ function buildPalette(meta, countries) {
   const px = new Uint8Array(256 * 4);
   for (let i = 0; i < meta.length && i < 256; i++) {
     const rec = countries[i];
-    const base = REGION_COLOR[(rec && rec.reg.en) || ''] || REGION_COLOR[''];
+    const sub = rec && rec.sub && rec.sub.en;
+    const hsl = sub && SUBREGION_HSL[sub];
+    const base = hsl ? hsl2rgb(hsl[0], hsl[1], hsl[2]) : (REGION_COLOR[(rec && rec.reg.en) || ''] || REGION_COLOR['']);
     let h = 0; const k = meta[i].key;
     for (let c = 0; c < k.length; c++) h = (h * 31 + k.charCodeAt(c)) & 0xffff;
     const j = ((h % 100) / 100 - 0.5) * 0.20;
@@ -502,13 +541,14 @@ function buildPalette(meta, countries) {
   return px;
 }
 
-/* sequential ramp for the thematic layer: deep teal -> aurora -> gold -> coral */
-// A muted, low-chroma sequential ramp — deliberately far short of fully
-// saturated so 200-odd adjacent polygons read as one calm gradient rather
-// than a lit-up patchwork. Slate -> teal -> sage -> muted gold -> terracotta.
+/* sequential ramp for the thematic layer: indigo -> teal -> green -> gold -> orange -> red */
+// The colour itself is allowed to be vivid and clearly stepped -- that's
+// what makes 200-odd polygons legible as a ranked scale -- the glare that
+// made it unreadable was the natural-terrain *lighting* stacked on top
+// (handled above via `themed`), not the palette's own saturation.
 const RAMP = [
-  [0.075, 0.098, 0.130], [0.098, 0.180, 0.196], [0.129, 0.267, 0.259],
-  [0.278, 0.373, 0.263], [0.478, 0.427, 0.263], [0.541, 0.345, 0.263],
+  [0.106, 0.216, 0.478], [0.086, 0.478, 0.541], [0.259, 0.639, 0.373],
+  [0.788, 0.729, 0.196], [0.894, 0.482, 0.169], [0.792, 0.212, 0.216],
 ];
 function rampColor(t) {
   t = clamp(t, 0, 1) * (RAMP.length - 1);

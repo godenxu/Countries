@@ -1,7 +1,7 @@
 /* ============================================================
    country dossier — nine modules rendered into the side panel
    ============================================================ */
-const PANEL_TABS = ['overview', 'geography', 'people', 'economy', 'politics', 'military', 'culture', 'envtech', 'sources'];
+const PANEL_TABS = ['overview', 'geography', 'cities', 'people', 'economy', 'politics', 'military', 'culture', 'envtech', 'sources'];
 
 const UI = {
   sect(host, title) {
@@ -173,24 +173,38 @@ function renderDossier(body, i, tab, onPick, onCity) {
     UI.row(s, T('kLandlocked'), c.landlocked ? T('yes') : T('no'));
     UI.row(s, T('kNeighbors'), String(c.borders.length));
     UI.row(s, T('kTz'), c.tz ? 'UTC ' + c.tz : NA);
+    const s2 = UI.sect(body, T('sectEnv'));
+    for (const k of ['forest', 'co2', 'renew']) UI.metric(s2, c, k, i);
+  }
+
+  if (tab === 'cities') {
+    const sc = UI.sect(body, T('sectCities'));
     if (c.cities && c.cities.length) {
-      const sc = UI.sect(body, T('sectCities'));
-      const box = el('div', 'cities');
+      const box = el('div', 'cities rich');
+      // rank badges reflect the curated population order, independent of the
+      // capital-first display order below (a capital isn't always its
+      // country's largest city, so the two orders can legitimately differ)
+      const rankOf = new Map(c.cities.map((city, idx) => [city, idx + 1]));
       const ordered = c.cities.slice().sort((a, b) => (b.isCap ? 1 : 0) - (a.isCap ? 1 : 0));
       for (const city of ordered) {
         const row = el('div', 'cityrow' + (city.isCap ? ' cap' : ''));
-        if (city.isCap) row.appendChild(el('span', 'capstar', '★'));
-        row.appendChild(el('span', 'cn', zh ? city.zh : city.en));
-        if (city.isCap) row.appendChild(el('span', 'capbadge', T('capital')));
-        row.appendChild(el('span', 'ce', zh ? city.en : city.zh));
-        row.appendChild(el('span', 'cp', city.pop ? fmtBig(city.pop).v + fmtBig(city.pop).u : ''));
+        row.appendChild(el('span', 'ccrank', '#' + rankOf.get(city)));
+        const nameWrap = el('div', 'ccname');
+        nameWrap.appendChild(el('span', 'cn', zh ? city.zh : city.en));
+        nameWrap.appendChild(el('span', 'ce', zh ? city.en : city.zh));
+        row.appendChild(nameWrap);
+        const metaWrap = el('div', 'ccmeta');
+        if (city.pop) metaWrap.appendChild(el('span', 'cp', fmtBig(city.pop).v + fmtBig(city.pop).u));
+        if (city.lat != null && city.lon != null) metaWrap.appendChild(el('span', 'cd', fmtCoord(city.lon, city.lat)));
+        row.appendChild(metaWrap);
+        if (city.isCap) row.appendChild(el('span', 'capbadge', '★ ' + T('capital')));
         row.onclick = () => onCity && onCity(city.lat, city.lon, zh ? city.zh : city.en);
         box.appendChild(row);
       }
       sc.appendChild(box);
+    } else {
+      sc.appendChild(el('div', 'emptynote', T('noCityData')));
     }
-    const s2 = UI.sect(body, T('sectEnv'));
-    for (const k of ['forest', 'co2', 'renew']) UI.metric(s2, c, k, i);
   }
 
   if (tab === 'people') {

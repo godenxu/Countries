@@ -1,7 +1,7 @@
 /* ============================================================
    indicator access, ranking, thematic scales, online refresh
    ============================================================ */
-const DATA = { countries: [], indMeta: [], orgMeta: [], seriesYears: [], byKey: {}, ranks: {}, wb: null };
+const DATA = { countries: [], indMeta: [], orgMeta: [], seriesYears: [], byKey: {}, ranks: {}, wb: null, cities: [] };
 
 function initData(bundle) {
   DATA.countries = bundle.countries;
@@ -9,6 +9,13 @@ function initData(bundle) {
   DATA.orgMeta = bundle.orgMeta;
   DATA.seriesYears = bundle.seriesYears;
   DATA.countries.forEach((c, i) => { DATA.byKey[c.k] = i; });
+  // flat city index for search: each entry keeps a back-reference (ci) to
+  // its host country's index in DATA.countries
+  DATA.cities = [];
+  DATA.countries.forEach((c, i) => {
+    if (!c.cities) return;
+    for (const city of c.cities) DATA.cities.push(Object.assign({ ci: i }, city));
+  });
   loadCache();
   computeRanks();
 }

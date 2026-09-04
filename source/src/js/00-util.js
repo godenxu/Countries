@@ -55,13 +55,14 @@ function unpack(buf) {
 /* ---------------- i18n ---------------- */
 const I18N = {
   zh: {
-    brand: '寰宇', tagline: '世界国家信息大全', search: '搜索国家 / 拼音 / 代码…', noResult: '无匹配结果',
+    brand: '寰宇', tagline: '世界国家信息大全', search: '搜索国家 / 城市 / 拼音 / 代码…', noResult: '无匹配结果',
+    noCityData: '暂无城市数据收录',
     globe: '地球仪', map: '平面图', spin: '自转', reset: '复位', zoomIn: '放大', zoomOut: '缩小',
     fullscreen: '全屏', settings: '视觉设置', ranking: '排行榜', random: '随机漫游', favorite: '收藏',
     compare: '对比', lang: '语言',
     booting: '系统初始化', bootGeo: '解析疆域数据', bootMesh: '构建球面网格', bootGL: '启动渲染引擎',
     bootLabel: '生成地名图集', bootReady: '就绪',
-    overview: '概览', geography: '地理', people: '人口', economy: '经济', politics: '政治',
+    overview: '概览', geography: '地理', cities: '城市', people: '人口', economy: '经济', politics: '政治',
     military: '军事', culture: '文化', envtech: '环境科技', sources: '来源',
     kPop: '人口', kArea: '面积', kDens: '人口密度', kCapital: '首都', kRegion: '地区', capital: '首都',
     kSubregion: '次区域', kOfficial: '官方全称', kCurrency: '货币', kLanguage: '语言',
@@ -103,13 +104,14 @@ const I18N = {
     year: '年', age: '岁', celsius: '℃', meter: '米',
   },
   en: {
-    brand: 'ATLAS', tagline: 'World Country Almanac', search: 'Search country / code…', noResult: 'No match',
+    brand: 'ATLAS', tagline: 'World Country Almanac', search: 'Search country / city / code…', noResult: 'No match',
+    noCityData: 'No city data catalogued yet',
     globe: 'Globe', map: 'Map', spin: 'Spin', reset: 'Reset', zoomIn: 'Zoom in', zoomOut: 'Zoom out',
     fullscreen: 'Fullscreen', settings: 'Visual settings', ranking: 'Leaderboard', random: 'Surprise me',
     favorite: 'Favourite', compare: 'Compare', lang: 'Language',
     booting: 'Initialising', bootGeo: 'Decoding boundaries', bootMesh: 'Building sphere mesh',
     bootGL: 'Starting renderer', bootLabel: 'Rendering place names', bootReady: 'Ready',
-    overview: 'Overview', geography: 'Geography', people: 'People', economy: 'Economy', politics: 'Politics',
+    overview: 'Overview', geography: 'Geography', cities: 'Cities', people: 'People', economy: 'Economy', politics: 'Politics',
     military: 'Military', culture: 'Culture', envtech: 'Environment', sources: 'Sources',
     kPop: 'Population', kArea: 'Area', kDens: 'Density', kCapital: 'Capital', kRegion: 'Region', capital: 'Capital',
     kSubregion: 'Subregion', kOfficial: 'Official name', kCurrency: 'Currency', kLanguage: 'Languages',
