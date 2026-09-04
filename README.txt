@@ -1,5 +1,5 @@
 寰宇 ATLAS · 世界国家信息大全
-构建版本 BUILD 20260904110804（UTC+8）  阶段 P4
+构建版本 BUILD 20260904122151（UTC+8）  阶段 P4
 
 【怎么用】
 1) 直接双击 index.html 即可离线运行（需要支持 WebGL2 的浏览器：Chrome / Edge / Safari 16+）。

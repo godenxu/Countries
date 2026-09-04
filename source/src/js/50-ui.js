@@ -231,7 +231,43 @@ class UIShell {
     };
     pnTabsEl.addEventListener('scroll', syncTabFade, { passive: true });
     syncTabFade();
+    // the chip row already scrolls natively via touch on mobile; desktop has
+    // neither a touchpad drag nor a visible scrollbar (it's hidden for
+    // looks), so wheel gets remapped to horizontal and a plain mouse
+    // click-drag pans the row too, the same way the tab strip already does
+    const themeBarEl = $('#themeBar');
+    let themeBarDragMoved = 0;
+    themeBarEl.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      themeBarEl.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
+    {
+      // deliberately NOT using setPointerCapture here: capturing on the row
+      // retargets the pointerup (and the click derived from it) to the row
+      // itself instead of the chip under the cursor, which silently broke
+      // every chip click. Document-level listeners (same pattern as the
+      // mobile panel drag below) track the drag without that side effect.
+      let startX = 0, startScroll = 0;
+      const onMove = (e) => {
+        const dx = e.clientX - startX;
+        themeBarDragMoved = Math.max(themeBarDragMoved, Math.abs(dx));
+        if (themeBarDragMoved > 3) themeBarEl.classList.add('dragging');
+        themeBarEl.scrollLeft = startScroll - dx;
+      };
+      const onUp = () => {
+        themeBarEl.classList.remove('dragging');
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+      };
+      themeBarEl.addEventListener('pointerdown', (e) => {
+        startX = e.clientX; startScroll = themeBarEl.scrollLeft; themeBarDragMoved = 0;
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
+      });
+    }
     $('#themeBar').onclick = (e) => {
+      if (themeBarDragMoved > 3) return;   // a real drag shouldn't also select a chip
       const b = e.target.closest('.tchip'); if (!b) return;
       if (b.dataset.k === '__custom__') { this.setCustomTheme(); return; }
       this.setTheme(b.dataset.k || null);

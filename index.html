@@ -303,9 +303,10 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   transition: transform .4s cubic-bezier(.22,.9,.28,1);
   display: flex; gap: 4px; padding: 5px 8px; border-radius: 20px;
   max-width: min(78vw, 900px); overflow-x: auto; scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
+  -webkit-overflow-scrolling: touch; cursor: grab;
 }
 #themeBar::-webkit-scrollbar { display: none; }
+#themeBar.dragging { cursor: grabbing; user-select: none; }
 .tchip {
   flex: none; padding: 5px 11px; border-radius: 14px; font-size: 11.5px; white-space: nowrap;
   color: #8fb9c2; border: 1px solid transparent; transition: all .18s ease;
@@ -1336,15 +1337,14 @@ void main(){
   // scanning sweep
   float sweepLon = mod(vLL.x - uSweep + 540.0, 360.0) - 180.0;
   c += vec3(0.20, 0.95, 0.80) * exp(-abs(sweepLon)*0.55) * 0.10;
-  // user-defined marks (e.g. "which countries are in this org") overlay on
-  // top of whatever palette is active, so they stay visible in both natural
-  // and thematic mode; selection/hover glow still layers on top of this.
-  // "Custom" view mode (uMarkFocus) turns them into a bold spotlight: marked
-  // countries saturate further while everything unmarked fades to neutral,
-  // the same way switching to a data theme replaces the natural map's story
+  // user-defined marks (e.g. "which countries are in this org") only render
+  // while the "Custom" chip is the active colour scheme -- uMarkFocus is 0
+  // for the natural map and every data theme, so marks never bleed into
+  // those views; selecting Custom fades it in as a bold spotlight, with
+  // marked countries saturating further and everything else going neutral
   vec4 mk = texelFetch(uMark, ivec2(int(vCid + 0.5), 0), 0);
   float hasMark = step(0.01, mk.a);
-  c = mix(c, mk.rgb, mk.a * mix(0.55, 0.88, uMarkFocus));
+  c = mix(c, mk.rgb, mk.a * uMarkFocus * 0.88);
   c = mix(c, vec3(0.10, 0.12, 0.15), (1.0 - hasMark) * uMarkFocus * 0.62);
   float sel = step(abs(vCid - uSel), 0.5);
   float hov = step(abs(vCid - uHover), 0.5) * (1.0 - sel);
@@ -1990,6 +1990,7 @@ function buildLabelInstances(countries, meta, atlas) {
   let count = 0;
   // sort so the biggest countries draw last (they win overlaps)
   const order = meta.map((m, i) => i).sort((a, b) => meta[a].area - meta[b].area);
+  const sByIdx = new Float32Array(meta.length);
   for (const i of order) {
     const r = atlas.rects[i];
     if (!r) continue;
@@ -2002,16 +2003,20 @@ function buildLabelInstances(countries, meta, atlas) {
     // so small, tightly-packed countries (Balkans, the Gulf) take up less
     // room and collide with their neighbours' labels less often
     const s = clamp(0.30 * Math.log10(Math.max(2e3, m.area)) - 0.55, 0.48, 1.75);
+    sByIdx[i] = s;
     info[count * 4] = s; info[count * 4 + 1] = m.area; info[count * 4 + 2] = i; info[count * 4 + 3] = r[4];
     tier[count] = 0;
     count++;
   }
-  // cities: fixed small on-screen size, only fade in once zoomed well past
-  // their host country's own label threshold (encoded as a tiny synthetic area)
+  // cities: sized as a fraction of their *own host country's* label scale,
+  // not a flat constant -- a flat size read fine for large countries but
+  // dwarfed the country name for small ones (e.g. Seoul vs. "South Korea")
+  // once the zoom-growth multiplier (uCityZoom) kicked in
   for (const { rect: r, c } of atlas.cityRects) {
     ll[count * 2] = c.lon; ll[count * 2 + 1] = c.lat;
     uv[count * 4] = r[0]; uv[count * 4 + 1] = r[1]; uv[count * 4 + 2] = r[2]; uv[count * 4 + 3] = r[3];
-    info[count * 4] = c.isCap ? 1.15 : 0.95; info[count * 4 + 1] = 900;
+    const hostS = sByIdx[c.ci] || 0.7;
+    info[count * 4] = hostS * (c.isCap ? 0.72 : 0.58); info[count * 4 + 1] = 900;
     info[count * 4 + 2] = 10000 + c.ci; info[count * 4 + 3] = r[4];
     tier[count] = 1;
     count++;
@@ -2732,7 +2737,7 @@ class View {
     // screen size; the reference distance differs per mode since globe and
     // map dist ranges aren't comparable
     const refDist = this.cam.morph > 0.5 ? 0.65 : 2.0;
-    gl.uniform1f(p.u.uCityZoom, clamp(refDist / Math.max(this.cam.dist, 0.05), 0.6, 3.2));
+    gl.uniform1f(p.u.uCityZoom, clamp(refDist / Math.max(this.cam.dist, 0.05), 0.6, 2.0));
     gl.bindBuffer(gl.ARRAY_BUFFER, this.bQuad01);
     gl.enableVertexAttribArray(p.a.aCorner);
     gl.vertexAttribPointer(p.a.aCorner, 2, gl.FLOAT, false, 0, 0);
@@ -3745,7 +3750,43 @@ class UIShell {
     };
     pnTabsEl.addEventListener('scroll', syncTabFade, { passive: true });
     syncTabFade();
+    // the chip row already scrolls natively via touch on mobile; desktop has
+    // neither a touchpad drag nor a visible scrollbar (it's hidden for
+    // looks), so wheel gets remapped to horizontal and a plain mouse
+    // click-drag pans the row too, the same way the tab strip already does
+    const themeBarEl = $('#themeBar');
+    let themeBarDragMoved = 0;
+    themeBarEl.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      themeBarEl.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
+    {
+      // deliberately NOT using setPointerCapture here: capturing on the row
+      // retargets the pointerup (and the click derived from it) to the row
+      // itself instead of the chip under the cursor, which silently broke
+      // every chip click. Document-level listeners (same pattern as the
+      // mobile panel drag below) track the drag without that side effect.
+      let startX = 0, startScroll = 0;
+      const onMove = (e) => {
+        const dx = e.clientX - startX;
+        themeBarDragMoved = Math.max(themeBarDragMoved, Math.abs(dx));
+        if (themeBarDragMoved > 3) themeBarEl.classList.add('dragging');
+        themeBarEl.scrollLeft = startScroll - dx;
+      };
+      const onUp = () => {
+        themeBarEl.classList.remove('dragging');
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+      };
+      themeBarEl.addEventListener('pointerdown', (e) => {
+        startX = e.clientX; startScroll = themeBarEl.scrollLeft; themeBarDragMoved = 0;
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
+      });
+    }
     $('#themeBar').onclick = (e) => {
+      if (themeBarDragMoved > 3) return;   // a real drag shouldn't also select a chip
       const b = e.target.closest('.tchip'); if (!b) return;
       if (b.dataset.k === '__custom__') { this.setCustomTheme(); return; }
       this.setTheme(b.dataset.k || null);
@@ -4357,7 +4398,7 @@ class UIShell {
 /* ============================================================
    bootstrap
    ============================================================ */
-const VERSION = '20260904110804';
+const VERSION = '20260904122151';
 
 function bootStep(pct, label) {
   const b = $('#bootBar');

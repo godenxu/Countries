@@ -7,4 +7,4 @@ node build/02-countries.mjs  # 国家资料 -> data/countries.json
 node build/03-bundle.mjs     # 打包 -> dist/index.html + release/*.zip
 ```
 
-构建版本 20260904110804（UTC+8）。
+构建版本 20260904122151（UTC+8）。

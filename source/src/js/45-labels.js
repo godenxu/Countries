@@ -106,6 +106,7 @@ function buildLabelInstances(countries, meta, atlas) {
   let count = 0;
   // sort so the biggest countries draw last (they win overlaps)
   const order = meta.map((m, i) => i).sort((a, b) => meta[a].area - meta[b].area);
+  const sByIdx = new Float32Array(meta.length);
   for (const i of order) {
     const r = atlas.rects[i];
     if (!r) continue;
@@ -118,16 +119,20 @@ function buildLabelInstances(countries, meta, atlas) {
     // so small, tightly-packed countries (Balkans, the Gulf) take up less
     // room and collide with their neighbours' labels less often
     const s = clamp(0.30 * Math.log10(Math.max(2e3, m.area)) - 0.55, 0.48, 1.75);
+    sByIdx[i] = s;
     info[count * 4] = s; info[count * 4 + 1] = m.area; info[count * 4 + 2] = i; info[count * 4 + 3] = r[4];
     tier[count] = 0;
     count++;
   }
-  // cities: fixed small on-screen size, only fade in once zoomed well past
-  // their host country's own label threshold (encoded as a tiny synthetic area)
+  // cities: sized as a fraction of their *own host country's* label scale,
+  // not a flat constant -- a flat size read fine for large countries but
+  // dwarfed the country name for small ones (e.g. Seoul vs. "South Korea")
+  // once the zoom-growth multiplier (uCityZoom) kicked in
   for (const { rect: r, c } of atlas.cityRects) {
     ll[count * 2] = c.lon; ll[count * 2 + 1] = c.lat;
     uv[count * 4] = r[0]; uv[count * 4 + 1] = r[1]; uv[count * 4 + 2] = r[2]; uv[count * 4 + 3] = r[3];
-    info[count * 4] = c.isCap ? 1.15 : 0.95; info[count * 4 + 1] = 900;
+    const hostS = sByIdx[c.ci] || 0.7;
+    info[count * 4] = hostS * (c.isCap ? 0.72 : 0.58); info[count * 4 + 1] = 900;
     info[count * 4 + 2] = 10000 + c.ci; info[count * 4 + 3] = r[4];
     tier[count] = 1;
     count++;

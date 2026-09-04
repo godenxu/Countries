@@ -128,15 +128,14 @@ void main(){
   // scanning sweep
   float sweepLon = mod(vLL.x - uSweep + 540.0, 360.0) - 180.0;
   c += vec3(0.20, 0.95, 0.80) * exp(-abs(sweepLon)*0.55) * 0.10;
-  // user-defined marks (e.g. "which countries are in this org") overlay on
-  // top of whatever palette is active, so they stay visible in both natural
-  // and thematic mode; selection/hover glow still layers on top of this.
-  // "Custom" view mode (uMarkFocus) turns them into a bold spotlight: marked
-  // countries saturate further while everything unmarked fades to neutral,
-  // the same way switching to a data theme replaces the natural map's story
+  // user-defined marks (e.g. "which countries are in this org") only render
+  // while the "Custom" chip is the active colour scheme -- uMarkFocus is 0
+  // for the natural map and every data theme, so marks never bleed into
+  // those views; selecting Custom fades it in as a bold spotlight, with
+  // marked countries saturating further and everything else going neutral
   vec4 mk = texelFetch(uMark, ivec2(int(vCid + 0.5), 0), 0);
   float hasMark = step(0.01, mk.a);
-  c = mix(c, mk.rgb, mk.a * mix(0.55, 0.88, uMarkFocus));
+  c = mix(c, mk.rgb, mk.a * uMarkFocus * 0.88);
   c = mix(c, vec3(0.10, 0.12, 0.15), (1.0 - hasMark) * uMarkFocus * 0.62);
   float sel = step(abs(vCid - uSel), 0.5);
   float hov = step(abs(vCid - uHover), 0.5) * (1.0 - sel);

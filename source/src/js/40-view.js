@@ -707,7 +707,7 @@ class View {
     // screen size; the reference distance differs per mode since globe and
     // map dist ranges aren't comparable
     const refDist = this.cam.morph > 0.5 ? 0.65 : 2.0;
-    gl.uniform1f(p.u.uCityZoom, clamp(refDist / Math.max(this.cam.dist, 0.05), 0.6, 3.2));
+    gl.uniform1f(p.u.uCityZoom, clamp(refDist / Math.max(this.cam.dist, 0.05), 0.6, 2.0));
     gl.bindBuffer(gl.ARRAY_BUFFER, this.bQuad01);
     gl.enableVertexAttribArray(p.a.aCorner);
     gl.vertexAttribPointer(p.a.aCorner, 2, gl.FLOAT, false, 0, 0);
